@@ -1,0 +1,11 @@
+[project]
+name = "location-data-pipeline"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "pandas>=2.3.3",
+    "pyspark==3.5.7",
+    "setuptools>=80.9.0",
+]
