@@ -12,3 +12,12 @@ wheels/
 # Spark 
 spark-data/
 
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Private keys
+*.p8
+sf_*_key.p8
+
