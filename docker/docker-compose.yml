@@ -2,6 +2,7 @@
 services:
   spark-master:
     image: tkl-pyspark:0.1
+    build: .
     container_name: spark-master
     hostname: spark-master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
