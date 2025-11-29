@@ -7,8 +7,10 @@ RUN set -ex; \
     apt-get install -y python3 python3-pip; \
     rm -rf /var/lib/apt/lists/*
 
+ENV SPARK_HOME=/opt/spark
 
 COPY requirements-pipeline.txt .
+COPY ./spark/spark-defaults.conf "${SPARK_HOME}/conf/spark-defaults.conf"
 
 RUN pip install -r requirements-pipeline.txt
 
