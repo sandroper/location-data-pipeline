@@ -1,0 +1,4 @@
+pandas>=2.3.3
+python-dotenv>=1.2.1
+pyspark==3.5.7
+setuptools>=80.9.0

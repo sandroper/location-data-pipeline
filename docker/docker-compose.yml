@@ -1,7 +1,8 @@
 
 services:
   spark-master:
-    image: apache/spark:3.5.7-scala2.12-java17-python3-r-ubuntu
+    image: tkl-pyspark:0.1
+    build: .
     container_name: spark-master
     hostname: spark-master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
@@ -15,12 +16,28 @@ services:
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
     volumes:
-      - ./spark-data:/opt/spark/work-dir
+      - ./spark/spark-data:/opt/spark/work-dir
+      - ./spark/spark-logs:/opt/spark/spark-events
     networks:
       - spark-network
 
+  spark-history-server:
+    container_name: spark-history
+    image: tkl-pyspark:0.1
+    command: /opt/spark/sbin/start-history-server.sh
+    depends_on:
+      - spark-master
+    env_file:
+      - ./spark/.env.spark
+    volumes:
+      - ./scripts:/opt/spark/scripts
+      - ./data:/opt/spark/data
+      - ./spark/spark-logs:/opt/spark/spark-events
+    ports:
+      - '18080:18080'
+
   spark-worker-1:
-    image: apache/spark:3.5.7-scala2.12-java17-python3-r-ubuntu 
+    image: tkl-pyspark:0.1
     container_name: spark-worker-1
     hostname: spark-worker-1
     depends_on:
@@ -36,12 +53,13 @@ services:
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
     volumes:
-      - ./spark-data:/opt/spark/work-dir
+      - ./spark/spark-data:/opt/spark/work-dir
+      - ./spark/spark-logs:/opt/spark/spark-events
     networks:
       - spark-network
 
   spark-worker-2:
-    image: apache/spark:3.5.7-scala2.12-java17-python3-r-ubuntu
+    image: tkl-pyspark:0.1
     container_name: spark-worker-2
     hostname: spark-worker-2
     depends_on:
@@ -57,7 +75,8 @@ services:
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
     volumes:
-      - ./spark-data:/opt/spark/work-dir
+      - ./spark/spark-data:/opt/spark/work-dir
+      - ./spark/spark-logs:/opt/spark/spark-events
     networks:
       - spark-network
 
@@ -67,4 +86,4 @@ networks:
 
 volumes:
   spark-data:
-
+  spark-logs:
