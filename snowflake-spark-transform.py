@@ -33,7 +33,7 @@ spark = SparkSession.builder \
 # See .env.example for the required variables
 snowflake_account = os.getenv("SNOWFLAKE_ACCOUNT", "your_account")
 # Construct full URL if not provided
-snowflake_url = os.getenv("SNOWFLAKE_URL", f"{snowflake_account}.snowflakecomputing.com")
+snowflake_url = os.getenv("SNOWFLAKE_URL", "Your URL")
 
 # Get private key authentication options from key manager
 key_options = get_snowflake_key_options()
@@ -45,6 +45,7 @@ snowflake_options = {
     "sfDatabase": os.getenv("SNOWFLAKE_DATABASE", "your_database"),
     "sfSchema": os.getenv("SNOWFLAKE_SCHEMA", "your_schema"),
     "sfWarehouse": os.getenv("SNOWFLAKE_WAREHOUSE", "your_warehouse"),
+    "sfTable": os.getenv("SNOWFLAKE_TABLE", "your_table"),
 }
 
 # Add private key authentication options
@@ -59,11 +60,9 @@ table_name = os.getenv("SNOWFLAKE_TABLE", "your_table")
 
 print(f"Connecting to Snowflake table: {snowflake_options['sfDatabase']}.{snowflake_options['sfSchema']}.{table_name}")
 
-# Read data from Snowflake
-# Using query to limit to 50 rows
 query = f"""
     SELECT * 
-    FROM {snowflake_options['sfDatabase']}.{snowflake_options['sfSchema']}.{table_name}
+    FROM {snowflake_options['sfTable']}
     LIMIT 50
 """
 

@@ -3,15 +3,20 @@
 # Spark Submit Script for snowflake-spark-transform.py
 # This script submits the Snowflake transformation job to the Spark standalone cluster
 
-# Get the absolute path of the script directory
+# Get the absolute path of the script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON_FILE="$SCRIPT_DIR/snowflake-spark-transform.py"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PYTHON_FILE="$PROJECT_ROOT/snowflake-spark-transform.py"
 
 # Allow specifying environment-specific .env file via ENV_FILE variable
 # Example: ENV_FILE=.env.prod ./spark-submit-snowflake.sh
 # Defaults to .env if not specified
 ENV_FILE_NAME="${ENV_FILE:-.env}"
-ENV_FILE="$SCRIPT_DIR/$ENV_FILE_NAME"
+# Look for .env in project root first, then in script directory
+ENV_FILE="$PROJECT_ROOT/$ENV_FILE_NAME"
+if [ ! -f "$ENV_FILE" ]; then
+    ENV_FILE="$SCRIPT_DIR/$ENV_FILE_NAME"
+fi
 
 # Check if the Python file exists
 if [ ! -f "$PYTHON_FILE" ]; then
@@ -58,6 +63,7 @@ if [ ${#missing_vars[@]} -ne 0 ]; then
     printf '  - %s\n' "${missing_vars[@]}"
     echo ""
     echo "Please set them in the .env file or as environment variables, for example:"
+    echo "  SNOWFLAKE_URL=your_url"
     echo "  SNOWFLAKE_ACCOUNT=your_account"
     echo "  SNOWFLAKE_USER=your_username"
     echo "  SNOWFLAKE_DATABASE=your_database"
@@ -67,12 +73,33 @@ if [ ${#missing_vars[@]} -ne 0 ]; then
     exit 1
 fi
 
-# Check for private key file
-KEY_FILE_PATH="${SNOWFLAKE_KEY_PATH:-$SCRIPT_DIR/sf_k2ib_key.p8}"
+# Check for private key file (validation only - Python code will do the actual check)
+# This is just a pre-flight check to give a helpful error early
+if [ -n "$SNOWFLAKE_KEY_PATH" ]; then
+    KEY_FILE_PATH="$SNOWFLAKE_KEY_PATH"
+    # If relative path, try resolving from project root
+    if [[ "$KEY_FILE_PATH" != /* ]]; then
+        # Try project root first
+        if [ -f "$PROJECT_ROOT/$KEY_FILE_PATH" ]; then
+            KEY_FILE_PATH="$PROJECT_ROOT/$KEY_FILE_PATH"
+        elif [ -f "$SCRIPT_DIR/$KEY_FILE_PATH" ]; then
+            KEY_FILE_PATH="$SCRIPT_DIR/$KEY_FILE_PATH"
+        fi
+    fi
+else
+    # Default location
+    KEY_FILE_PATH="$SCRIPT_DIR/sf_k2ib_key.p8"
+    if [ ! -f "$KEY_FILE_PATH" ]; then
+        KEY_FILE_PATH="$PROJECT_ROOT/sf_k2ib_key.p8"
+    fi
+fi
+
+# Note: We don't fail here if the file doesn't exist, as the Python code
+# will handle path resolution more intelligently (checking multiple locations)
+# This is just a warning
 if [ ! -f "$KEY_FILE_PATH" ]; then
-    echo "Error: Snowflake private key file not found: $KEY_FILE_PATH"
-    echo "Please ensure the key file exists or set SNOWFLAKE_KEY_PATH to the correct path"
-    exit 1
+    echo "Warning: Snowflake private key file not found at: $KEY_FILE_PATH"
+    echo "The Python code will attempt to locate it using SNOWFLAKE_KEY_PATH from .env"
 fi
 
 # Submit the job to the Spark standalone cluster
