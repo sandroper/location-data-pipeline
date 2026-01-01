@@ -11,6 +11,7 @@ ENV SPARK_HOME=/opt/spark
 
 COPY requirements-pipeline.txt .
 COPY ./spark/spark-defaults.conf "${SPARK_HOME}/conf/spark-defaults.conf"
+RUN mkdir -p /opt/spark/spark-events && chmod a+wr /opt/spark/spark-events
 
 RUN pip install -r requirements-pipeline.txt
 
