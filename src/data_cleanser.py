@@ -16,7 +16,7 @@ class DataCleanser:
         logging.info(f"STEP 1/5: Extracting data for devices")
         step_start = datetime.now()
         device_data = self.__extract_device_data__(self.df_raw_data)
-        # device_data = self.__clean_trajectory__(device_data)
+        device_data = self.__clean_trajectory__(device_data)
         step_duration = datetime.now() - step_start
         logging.info(f"Data extraction completed in {step_duration.total_seconds():.2f} seconds")
         return device_data
@@ -44,3 +44,17 @@ class DataCleanser:
         device_df = device_df.withColumn('event_ts', date_format(col('event_ts'), 'yyyy-MM-dd HH:mm'))
 
         return device_df
+
+
+    def __clean_trajectory__(self, df: DataFrame):
+        if df is None or df.count() == 0:
+            logging.warning("No data to clean")
+            return df
+        cleaned_df = df
+
+        # if cleaned_df['event_ts'].dtype == 'object':
+        #     cleaned_df['event_ts'] = pd.to_datetime(cleaned_df['event_ts'], errors='coerce')
+        cleaned_df = cleaned_df.withColumn('event_ts', to_timestamp(col('event_ts'), 'yyyy-MM-dd HH:mm'))
+        cleaned_df = cleaned_df.orderBy('event_ts')
+
+        return cleaned_df
