@@ -1,0 +1,38 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+env_path = Path(__file__).parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+    print(f"Loaded environment variables from {env_path}")
+else:
+    # Fallback: try to load from current directory
+    load_dotenv()
+
+class LocationPipelineConfig():
+
+    max_distance_threshold_km = os.getenv("MAX_DISTANCE_THRESHOLD_KM", 5)
+    min_distance_threshold_km = os.getenv("MIN_DISTANCE_THRESHOLD_KM", 1)
+    max_speed_kmh = os.getenv("MAX_SPEED_KMH", 200)
+    
+    dist_threshold_m = os.getenv("DIST_THRESHOLD_M", 100) 
+    time_threshold_min = os.getenv("TIME_THRESHOLD_MIN", 10) 
+
+    clustering_eps = os.getenv("CLUSTERING_EPS", 100)
+    clustering_min_samples = os.getenv("CLUSTERING_MIN_SAMPLES", 1)
+    centroid_method = os.getenv("CENTROID_METHOD", "weighted_average")
+
+    def __str__(self) -> str:
+        return (
+            f"LocationPipelineConfig(\n"
+            f"  max_distance_threshold_km={self.max_distance_threshold_km},\n"
+            f"  min_distance_threshold_km={self.min_distance_threshold_km},\n"
+            f"  max_speed_kmh={self.max_speed_kmh},\n"
+            f"  dist_threshold_m={self.dist_threshold_m},\n"
+            f"  time_threshold_min={self.time_threshold_min},\n"
+            f"  clustering_eps={self.clustering_eps},\n"
+            f"  clustering_min_samples={self.clustering_min_samples},\n"
+            f"  centroid_method={self.centroid_method}\n"
+            f")"
+        )

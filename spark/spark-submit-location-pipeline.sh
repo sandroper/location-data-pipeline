@@ -6,7 +6,7 @@
 # Get the absolute path of the script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-PYTHON_FILE="$PROJECT_ROOT/src/snowflake-spark-transform.py"
+PYTHON_FILE="$PROJECT_ROOT/src/spark_location_pipeline.py"
 
 # Allow specifying environment-specific .env file via ENV_FILE variable
 # Example: ENV_FILE=.env.prod ./spark-submit-snowflake.sh
