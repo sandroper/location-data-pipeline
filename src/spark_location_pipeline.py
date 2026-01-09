@@ -34,6 +34,9 @@ spark = SparkSession.builder \
     .config("spark.jars.packages", "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.12:2.15.0-spark_3.5") \
     .getOrCreate()
 
+spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
+spark.conf.set("spark.sql.execution.arrow.pyspark.fallback.enabled", "false")
+
 device_id_df = spark.read \
     .format("net.snowflake.spark.snowflake") \
     .options(**snowflake_options) \
@@ -53,8 +56,8 @@ df = spark.read \
 print("Before cleaning: ")
 print(df.show())
 
-data_cleanser = DataCleanser(df, location_pipeline_config)
-cleansed_df = data_cleanser.cleanse()
+data_cleanser = DataCleanser(location_pipeline_config)
+cleansed_df = spark.createDataFrame(data_cleanser.cleanse(df))
 
 print("After cleaning: ")
 print(cleansed_df.show())

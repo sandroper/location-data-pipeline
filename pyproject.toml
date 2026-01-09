@@ -12,6 +12,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "setuptools>=80.9.0",
     "pytz>=2024.1",
+    "pyarrow>=22.0.0",
 ]
 
 [project.optional-dependencies]
@@ -25,4 +26,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short -p no:xdist"

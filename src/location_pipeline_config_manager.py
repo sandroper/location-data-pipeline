@@ -12,16 +12,16 @@ else:
 
 class LocationPipelineConfig():
 
-    max_distance_threshold_km = os.getenv("MAX_DISTANCE_THRESHOLD_KM", 5)
-    min_distance_threshold_km = os.getenv("MIN_DISTANCE_THRESHOLD_KM", 1)
-    max_speed_kmh = os.getenv("MAX_SPEED_KMH", 200)
+    max_distance_threshold_km: int = os.getenv("MAX_DISTANCE_THRESHOLD_KM", 5)
+    min_distance_threshold_km: int = os.getenv("MIN_DISTANCE_THRESHOLD_KM", 1)
+    max_speed_kmh: int = os.getenv("MAX_SPEED_KMH", 200)
     
-    dist_threshold_m = os.getenv("DIST_THRESHOLD_M", 100) 
-    time_threshold_min = os.getenv("TIME_THRESHOLD_MIN", 10) 
+    dist_threshold_m: int = os.getenv("DIST_THRESHOLD_M", 100) 
+    time_threshold_min: int = os.getenv("TIME_THRESHOLD_MIN", 10) 
 
-    clustering_eps = os.getenv("CLUSTERING_EPS", 100)
-    clustering_min_samples = os.getenv("CLUSTERING_MIN_SAMPLES", 1)
-    centroid_method = os.getenv("CENTROID_METHOD", "weighted_average")
+    clustering_eps: int = os.getenv("CLUSTERING_EPS", 100)
+    clustering_min_samples: int = os.getenv("CLUSTERING_MIN_SAMPLES", 1)
+    centroid_method: str = os.getenv("CENTROID_METHOD", "weighted_average")
 
     def __str__(self) -> str:
         return (
