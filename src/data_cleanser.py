@@ -82,7 +82,7 @@ class DataCleanser:
         
         if 'event_ts' in pdf.columns:
             pdf['event_ts'] = pdf['event_ts'].dt.strftime('%Y-%m-%d %H:%M')
-            
+
         return pdf
 
 
@@ -128,8 +128,6 @@ class DataCleanser:
         return pdf
         
         
-
-
 
     def __compute_location_params__(self, pdf: pd.DataFrame) -> (list[float], list[float], list[float]):
         distances = []
