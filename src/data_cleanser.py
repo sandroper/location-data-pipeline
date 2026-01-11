@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from typing import Any
 from pyspark.sql import DataFrame
-from location_pipeline_config_manager import LocationPipelineConfig 
+from utils.location_pipeline_config_manager import LocationPipelineConfig 
 from pyspark.sql.functions import to_timestamp, col, date_format
 from geopy.distance import geodesic
 import pandas as pd
@@ -36,8 +36,10 @@ class DataCleanser:
             logging.error("Error: 'device_id' column not found in dataframe")
             return None
 
+        return df
 
-    def __extract_device_data__(df_raw_data: pd.DataFrame) -> pd.DataFrame:
+
+    def __extract_device_data__(self, device_df: pd.DataFrame) -> pd.DataFrame:
         # Rename first three columns to event_ts, lat, lon and keep only those
         columns = device_df.columns.tolist()
         device_df = device_df.iloc[:, :4].copy()
@@ -68,7 +70,8 @@ class DataCleanser:
         if missing_coords > 0:
             logging.info(f"Removed {missing_coords} rows with missing coordinates or timestamps")
 
-        pdf = self.__remove_invalid_points__(self.__compute_location_params__(pdf))
+        distances, time_diffs, speeds = self.__compute_location_params__(cleaned_df)
+        pdf = self.__remove_invalid_points__(cleaned_df, distances, time_diffs, speeds)
         pdf = self.__remove_stationary_outliers__(pdf)
 
         removed_total = initial_count - len(pdf)
@@ -86,7 +89,7 @@ class DataCleanser:
         return pdf
 
 
-    def __remove_invalid_points__(self, distances: list[float], time_diffs: list[float], speeds: list[float]) -> pd.DataFrame:
+    def __remove_invalid_points__(self, cleaned_df: pd.DataFrame, distances: list[float], time_diffs: list[float], speeds: list[float]) -> pd.DataFrame:
         points_to_remove = set()
         
         for i, speed in enumerate(speeds):

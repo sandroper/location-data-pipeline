@@ -19,6 +19,8 @@ class LocationPipelineConfig():
     dist_threshold_m: int = os.getenv("DIST_THRESHOLD_M", 100) 
     time_threshold_min: int = os.getenv("TIME_THRESHOLD_MIN", 10) 
 
+    time_zone: str = os.getenv("TIME_ZONE", "UTC")
+
     clustering_eps: int = os.getenv("CLUSTERING_EPS", 100)
     clustering_min_samples: int = os.getenv("CLUSTERING_MIN_SAMPLES", 1)
     centroid_method: str = os.getenv("CENTROID_METHOD", "weighted_average")
