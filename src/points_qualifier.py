@@ -5,11 +5,11 @@ from math import radians, cos, sin, asin, sqrt
 from datetime import datetime, timedelta
 import pandas as pd
 
-class Points_Qualifier:
+class PointsQualifier:
     def __init__(self, config: LocationPipelineConfig):
         self.dist_threshold_m: int = int(config.dist_threshold_m)
         self.time_threshold_min: int = int(config.time_threshold_min)
-        self.time_zone : str = str(config.time_zone)    
+        self.time_zone: str = str(config.time_zone)    
         self.TIME_ZONE_OFFSET_HOURS = get_timezone_offset(self.time_zone)
 
     def get_stay_points(self, device_data: pd.DataFrame):
@@ -68,7 +68,7 @@ class Points_Qualifier:
                             'num_points': 1,
                             'point_type': 'trajectory'
                         })
-                    # upadate i
+                    # update i
                     i = j   
             else:
                 # if j-1 is not greater than i, then it is a trajectory point
