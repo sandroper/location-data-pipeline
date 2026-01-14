@@ -5,7 +5,8 @@ Spark job to connect to Snowflake, retrieve data, and run the location pipeline
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from data_cleanser import DataCleanser
-from points_qualifier import Points_Qualifier
+from points_qualifier import PointsQualifier
+from cluster_stay_points import ClusterStayPoints
 from snowflake_config_manager import SnowflakeConfig
 from utils.location_pipeline_config_manager import LocationPipelineConfig
 
@@ -57,13 +58,21 @@ df = spark.read \
 print("==================== Before cleaning: ")
 print(df.show())
 
+print(f"STEP 1/4: Extracting data for devices")
 data_cleanser = DataCleanser(location_pipeline_config)
 cleansed_df = data_cleanser.cleanse(df)
 print("==================== After cleaning: ")
 print(cleansed_df)
-points_qualifier = Points_Qualifier(location_pipeline_config)
+print(f"STEP 2/4: Qualifying data points")
+points_qualifier = PointsQualifier(location_pipeline_config)
 qualified_df = points_qualifier.get_stay_points(cleansed_df)
-sdf_qualified = spark.createDataFrame(qualified_df)
+
+print(f"STEP 3/4: Clustering data points")
+clusterer = ClusterStayPoints(location_pipeline_config)
+clustered_df = clusterer.cluster_stay_points(qualified_df)
+print(clustered_df)
+
+sdf_qualified = spark.createDataFrame(clustered_df)
 
 print("==================== After qualifying: ")
 print(sdf_qualified.show())
