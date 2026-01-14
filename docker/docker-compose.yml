@@ -80,6 +80,31 @@ services:
     networks:
       - spark-network
 
+  osrm-preprocess:
+    image: ghcr.io/project-osrm/osrm-backend:v6.0.0
+    container_name: osrm-preprocess
+    command: > 
+      sh -c "chmod +x /scripts/osrm_preprocess.sh && sh /scripts/osrm_preprocess.sh libya-260113"
+    volumes:
+      - ./osrm/data:/data
+      - ./osrm/profiles:/profiles
+      - ./osrm/scripts:/scripts
+
+  osrm-map-server:
+    image: ghcr.io/project-osrm/osrm-backend:v6.0.0
+    container_name: osrm
+    depends_on:
+      osrm-preprocess:
+          condition: service_completed_successfully
+    command: osrm-routed --algorithm mld /data/libya-260113
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./osrm/data:/data
+    networks:
+      - spark-network
+
+
 networks:
   spark-network:
     driver: bridge
