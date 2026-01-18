@@ -8,10 +8,13 @@ fi
 
 echo "Preprocessing OSM file: $1"
 echo "Step 1/3: Extracting $1 data"
-osrm-extract --profile /profiles/car.lua /data/$1.osm.pbf
+osrm-extract --profile /profiles/car.lua ../data/$1.osm.pbf
 
-echo "Step 2/3: Extracting $1 data"
-osrm-partition /data/$1
+echo "Step 2/3: Partitioning $1 data"
+osrm-partition ../data/$1
 
 echo "Step 2/3: Customizing $1 data"
-osrm-customize /data/$1
+osrm-customize ../data/$1
+
+mv ../data/*.* ../data/work/
+mv ../data/work/*.osm.pbf ../data

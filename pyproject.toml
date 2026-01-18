@@ -8,12 +8,14 @@ dependencies = [
     "cryptography>=46.0.3",
     "geopy>=2.4.0",
     "pandas>=2.3.3",
-    "pyspark==3.5.7",
+    "pyspark==4.1.0",
     "python-dotenv>=1.2.1",
     "setuptools>=80.9.0",
     "pytz>=2024.1",
     "pyarrow>=22.0.0",
     "scikit-learn>=1.8.0",
+    "requests>=2.32.5",
+    "numpy==2.2.6",
 ]
 
 [project.optional-dependencies]

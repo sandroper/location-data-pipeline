@@ -21,3 +21,9 @@ spark-data/
 *.p8
 sf_*_key.p8
 
+
+#OSRM Data
+docker/osrm/data/work/
+
+#IntelliJ working dirs
+.idea/
