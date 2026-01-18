@@ -53,11 +53,8 @@ class ClusterStayPoints:
             df_complete['cluster_id'] = labels
 
         # Calculate centroids for each cluster using specified method
-        print("======= pd.Series(labels).unique: " + str(pd.Series(labels).unique()))
         for cluster_id in sorted(pd.Series(labels).unique()):
-            print("======= Cluster ID: " + str(cluster_id))
             cluster_mask = df_complete['cluster_id'] == cluster_id
-            print("======= Cluster mask: " + str(cluster_mask))
             cluster_data = df_complete[cluster_mask]
 
             if len(cluster_data) > 0:
@@ -69,12 +66,10 @@ class ClusterStayPoints:
                 elif self.centroid_method == 'weighted_average':
                     # Weighted average using num_points as weights
                     total_weight = cluster_data['num_points'].sum()
-                    print("=============== Total weight: ", total_weight)
                     if total_weight > 0:
                         centroid_lat = (cluster_data['lat'] * cluster_data['num_points']).sum() / total_weight
                         centroid_lon = (cluster_data['lon'] * cluster_data['num_points']).sum() / total_weight
-                        print("=============== Centroid Lat: ", centroid_lat)
-                        print("=============== Centroid Lon: ", centroid_lon)
+
                     else:
                         # Fallback to simple mean if all weights are zero
                         centroid_lat = cluster_data['lat'].mean()
@@ -90,9 +85,6 @@ class ClusterStayPoints:
                     raise ValueError(
                         f"Invalid centroid_method: {self.centroid_method}. Must be one of: 'average', 'weighted_average', 'max_points'")
 
-                print("======= Cluster mask: " + str(cluster_mask))
-                print("======= Centroid Lat: " + str(centroid_lat))
-                print("======= Centroid Lon: " + str(centroid_lon))
                 df_complete.loc[cluster_mask, 'centroid_lat'] = centroid_lat
                 df_complete.loc[cluster_mask, 'centroid_lon'] = centroid_lon
 

@@ -109,7 +109,7 @@ spark-submit \
     --master spark://localhost:7077 \
     --deploy-mode client \
     --name "snowflake-transform" \
-    --packages "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.12:3.1.5" \
-    --conf "spark.sql.execution.arrow.enabled=true" \
+    --packages "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.13:3.1.6" \
+    --conf "spark.sql.execution.arrow.pyspark.enabled=true" \
     "$PYTHON_FILE"
 

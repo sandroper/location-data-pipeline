@@ -9,6 +9,7 @@ from points_qualifier import PointsQualifier
 from cluster_stay_points import ClusterStayPoints
 from snowflake_config_manager import SnowflakeConfig
 from utils.location_pipeline_config_manager import LocationPipelineConfig
+from utils.osrm.osrm_route_predictor import RoutePredictorOSRM
 
 location_pipeline_config = LocationPipelineConfig() 
 print(f"Preparing locations pipeline with the following settings: {location_pipeline_config}")
@@ -33,7 +34,7 @@ query_all_device_ids = f"""
 # The Snowflake connector JARs will be downloaded automatically via Maven
 spark = SparkSession.builder \
     .appName("snowflake-transform") \
-    .config("spark.jars.packages", "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.12:2.15.0-spark_3.5") \
+    .config("spark.jars.packages", "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.13:3.1.6") \
     .getOrCreate()
 
 spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
@@ -69,10 +70,16 @@ qualified_df = points_qualifier.get_stay_points(cleansed_df)
 
 print(f"STEP 3/4: Clustering data points")
 clusterer = ClusterStayPoints(location_pipeline_config)
-clustered_df = clusterer.cluster_stay_points(qualified_df)
+clustered_df, cluster_labels = clusterer.cluster_stay_points(qualified_df)
 print(clustered_df)
+    
+print("STEP 4/4: Creating trajectories and interactive route map")
+start_date = clustered_df['arrival_time'].min()
+end_date = clustered_df['arrival_time'].max()
+route_predictor = RoutePredictorOSRM(location_pipeline_config, clustered_df, start_date, end_date)
+routes_df, df_schema = route_predictor.create_enhanced_interactive_route_map()
 
-sdf_qualified = spark.createDataFrame(clustered_df)
+sdf_qualified = spark.createDataFrame(routes_df, schema=df_schema)
 
-print("==================== After qualifying: ")
+print("==================== Final DataFrame: ")
 print(sdf_qualified.show())

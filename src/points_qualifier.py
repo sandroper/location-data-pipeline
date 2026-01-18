@@ -5,6 +5,17 @@ from math import radians, cos, sin, asin, sqrt
 from datetime import datetime, timedelta
 import pandas as pd
 
+
+def __haversine__(lat1, lon1, lat2, lon2):
+    R = 6371000
+    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * asin(sqrt(a))
+    return R * c
+
+
 class PointsQualifier:
     def __init__(self, config: LocationPipelineConfig):
         self.dist_threshold_m: int = int(config.dist_threshold_m)
@@ -20,7 +31,7 @@ class PointsQualifier:
             logging.info(f"Processing row {i} of {len(df)}")
             j = i + 1
             while j < len(df):
-                dist = self.__haversine__(df.loc[i, 'lat'], df.loc[i, 'lon'], df.loc[j, 'lat'], df.loc[j, 'lon'])
+                dist = __haversine__(df.loc[i, 'lat'], df.loc[i, 'lon'], df.loc[j, 'lat'], df.loc[j, 'lon'])
                 logging.debug(f"j={j}, i={i}, dist={dist}")
                 if dist > self.dist_threshold_m:
                     break
@@ -89,14 +100,4 @@ class PointsQualifier:
             return stay_df
         else:
             return None
-
-
-    def __haversine__(self, lat1, lon1, lat2, lon2):
-        R = 6371000
-        lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
-        dlat = lat2 - lat1
-        dlon = lon2 - lon1
-        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-        c = 2 * asin(sqrt(a))
-        return R * c
 

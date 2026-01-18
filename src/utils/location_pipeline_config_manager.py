@@ -25,6 +25,10 @@ class LocationPipelineConfig():
     clustering_min_samples: int = os.getenv("CLUSTERING_MIN_SAMPLES", 1)
     centroid_method: str = os.getenv("CENTROID_METHOD", "weighted_average")
 
+    osrm_server: str = os.getenv("OSRM_SERVER", "http://127.0.0.1:5000")
+
+    output_data_dir = os.getenv("OUTPUT_DATA_DIR", "./data/output")
+
     def __str__(self) -> str:
         return (
             f"LocationPipelineConfig(\n"
@@ -36,5 +40,6 @@ class LocationPipelineConfig():
             f"  clustering_eps={self.clustering_eps},\n"
             f"  clustering_min_samples={self.clustering_min_samples},\n"
             f"  centroid_method={self.centroid_method}\n"
+            f"  osrm_server={self.osrm_server}\n"
             f")"
         )
