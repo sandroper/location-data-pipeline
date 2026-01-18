@@ -1,9 +1,11 @@
 import logging
-from utils.location_pipeline_config_manager import LocationPipelineConfig 
+from utils.location_pipeline_config_manager import LocationPipelineConfig
 from utils.time_zone_utils import get_timezone_offset
 from math import radians, cos, sin, asin, sqrt
 from datetime import datetime, timedelta
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def __haversine__(lat1, lon1, lat2, lon2):
@@ -28,11 +30,11 @@ class PointsQualifier:
         stay_points = []
         i = 0
         while i < len(df):
-            logging.info(f"Processing row {i} of {len(df)}")
+            logger.info(f"Processing row {i} of {len(df)}")
             j = i + 1
             while j < len(df):
                 dist = __haversine__(df.loc[i, 'lat'], df.loc[i, 'lon'], df.loc[j, 'lat'], df.loc[j, 'lon'])
-                logging.debug(f"j={j}, i={i}, dist={dist}")
+                logger.debug(f"j={j}, i={i}, dist={dist}")
                 if dist > self.dist_threshold_m:
                     break
                 j += 1
@@ -49,10 +51,10 @@ class PointsQualifier:
                 t0_local = t0_utc + timedelta(hours=self.TIME_ZONE_OFFSET_HOURS)
                 t1_local = t1_utc + timedelta(hours=self.TIME_ZONE_OFFSET_HOURS)
                 
-                logging.debug(f"t0_local={t0_local}, t1_local={t1_local}")
-                logging.debug(f"difference={(t1_local - t0_local)}")
+                logger.debug(f"t0_local={t0_local}, t1_local={t1_local}")
+                logger.debug(f"difference={(t1_local - t0_local)}")
                 delta_min = (t1_local - t0_local).total_seconds() / 60.0
-                logging.debug(f"delta_min={delta_min}")
+                logger.debug(f"delta_min={delta_min}")
                 if delta_min >= self.time_threshold_min:
                     lat_mean = df.loc[i:j, 'lat'].mean()
                     lon_mean = df.loc[i:j, 'lon'].mean()
@@ -95,7 +97,7 @@ class PointsQualifier:
                 i += 1
         stay_df = pd.DataFrame(stay_points)
         
-        logging.info(f"Detected {len(stay_points)} stay points. Saved to stay_points.csv.")
+        logger.info(f"Detected {len(stay_points)} stay points. Saved to stay_points.csv.")
         if len(stay_points) > 0:
             return stay_df
         else:

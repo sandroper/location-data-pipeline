@@ -15,6 +15,9 @@ import logging
 import requests
 from utils.location_pipeline_config_manager import LocationPipelineConfig
 
+logger = logging.getLogger(__name__)
+
+
 class OSRMClient:
     def __init__(self, config: LocationPipelineConfig):
         self.server_url = config.osrm_server.rstrip('/')
@@ -26,11 +29,11 @@ class OSRMClient:
             # Test with a simple nearest query
             response = requests.get(f"{self.server_url}/nearest/v1/driving/12.4964,41.9028", timeout=5)
             if response.status_code != 200:
-                logging.warning(f"OSRM server returned status {response.status_code}")
+                logger.warning(f"OSRM server returned status {response.status_code}")
         except requests.exceptions.RequestException as e:
-            logging.warning(f"Could not connect to OSRM server at {self.server_url}")
-            logging.warning(f"Error: {e}")
-            logging.warning("Make sure OSRM server is running: python utils/osrm_lazio_docker.py")
+            logger.warning(f"Could not connect to OSRM server at {self.server_url}")
+            logger.warning(f"Error: {e}")
+            logger.warning("Make sure OSRM server is running: python utils/osrm_lazio_docker.py")
 
     def nearest(self, lat, lon, number=1):
         """
@@ -61,7 +64,7 @@ class OSRMClient:
                     'snapped_lon': waypoint['location'][0]
                 }
         except Exception as e:
-            logging.error(f"OSRM nearest error: {e}")
+            logger.error(f"OSRM nearest error: {e}")
 
         return None
 
@@ -110,7 +113,7 @@ class OSRMClient:
                     'waypoints': data.get('waypoints', [])
                 }
         except Exception as e:
-            logging.error(f"OSRM route error: {e}")
+            logger.error(f"OSRM route error: {e}")
 
         return None
 
@@ -195,7 +198,7 @@ class OSRMClient:
 
             # If match failed, try with larger radiuses
             elif data.get('code') == 'NoMatch':
-                logging.info("OSRM match failed with default radius, trying with 100m radius...")
+                logger.info("OSRM match failed with default radius, trying with 100m radius...")
                 params["radiuses"] = ";".join("100" for _ in points)
                 response = requests.get(url, params=params, timeout=30)
                 data = response.json()
@@ -233,6 +236,6 @@ class OSRMClient:
                     }
 
         except Exception as e:
-            logging.error(f"OSRM match error: {e}")
+            logger.error(f"OSRM match error: {e}")
 
         return None

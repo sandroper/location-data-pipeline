@@ -2,6 +2,13 @@
 Spark job to connect to Snowflake, retrieve data, and run the location pipeline
 """
 
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from data_cleanser import DataCleanser

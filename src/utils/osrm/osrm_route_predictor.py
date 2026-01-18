@@ -10,6 +10,9 @@ from utils.osrm.osrm_client import OSRMClient
 from utils.location_pipeline_config_manager import LocationPipelineConfig
 from pyspark.sql.types import StructType, StructField, IntegerType, StringType
 
+logger = logging.getLogger(__name__)
+
+
 class RoutePredictorOSRM:
     """
     Route Predictor using OSRM for map matching and routing.
@@ -58,9 +61,9 @@ class RoutePredictorOSRM:
         if 'arrival_time' in df.columns:
             df = df.sort_values('arrival_time')
 
-        logging.info(f"Loaded {len(df)} total points:")
-        logging.info(f"  - Stay points: {len(df[df['point_type'] == 'stay_point'])}")
-        logging.info(f"  - Trajectory points: {len(df[df['point_type'] == 'trajectory'])}")
+        logger.info(f"Loaded {len(df)} total points:")
+        logger.info(f"  - Stay points: {len(df[df['point_type'] == 'stay_point'])}")
+        logger.info(f"  - Trajectory points: {len(df[df['point_type'] == 'trajectory'])}")
 
         return df
 
@@ -239,14 +242,14 @@ class RoutePredictorOSRM:
             orig_coords = trajectory_points[0]
             dest_coords = trajectory_points[-1]
 
-            logging.info(
+            logger.info(
                 f"Trajectory-only route: {total_distance:.3f}km, {estimated_time_minutes:.1f}min, {len(route_coords)} points")
 
             return (route_coords, total_distance, orig_coords, dest_coords,
                     ('trajectory_only', 'trajectory_only', route_info))
 
         except Exception as e:
-            logging.error(f"Error creating trajectory-only route: {e}")
+            logger.error(f"Error creating trajectory-only route: {e}")
             return None, None, None, None, None
 
     def create_route_with_osrm_match(self, route_points, actual_duration_minutes=None, timestamps=None):
@@ -271,7 +274,7 @@ class RoutePredictorOSRM:
             return None, None, None, None, None
 
         try:
-            logging.info(f"OSRM matching {len(route_points)} points...")
+            logger.info(f"OSRM matching {len(route_points)} points...")
 
             # Store original trajectory points
             original_trajectory_coords = list(route_points)
@@ -280,12 +283,12 @@ class RoutePredictorOSRM:
             match_result = self.osrm.match(route_points, timestamps=timestamps)
 
             if match_result is None:
-                logging.info("OSRM match failed, trying route API...")
+                logger.info("OSRM match failed, trying route API...")
                 # Fallback to route API
                 route_result = self.osrm.route(route_points)
 
                 if route_result is not None:
-                    logging.info(f"OSRM route successful: {route_result['distance']:.3f}km")
+                    logger.info(f"OSRM route successful: {route_result['distance']:.3f}km")
 
                     # Get snapped coords from waypoints
                     snapped_coords = []
@@ -331,7 +334,7 @@ class RoutePredictorOSRM:
                     return (route_coords, total_distance, orig_coords, dest_coords,
                             ('osrm_route', 'osrm_route', route_info))
 
-                logging.info("OSRM route also failed, falling back to trajectory-only")
+                logger.info("OSRM route also failed, falling back to trajectory-only")
                 return self.create_trajectory_only_route(route_points, actual_duration_minutes)
 
             route_coords = match_result['coords']
@@ -353,16 +356,16 @@ class RoutePredictorOSRM:
             while len(snapped_coords) < len(original_trajectory_coords):
                 snapped_coords.append(original_trajectory_coords[len(snapped_coords)])
 
-            logging.info(
+            logger.info(
                 f"OSRM match result: {total_distance:.3f}km, {estimated_time_minutes:.1f}min, confidence: {confidence:.2f}")
-            logging.info(f"Matched route has {len(route_coords)} points (from {len(route_points)} input points)")
+            logger.info(f"Matched route has {len(route_coords)} points (from {len(route_points)} input points)")
 
             # Calculate divergence for quality assessment
             if len(route_points) > 2:
                 max_div, div_pct, avg_div = self.calculate_route_divergence(
                     route_coords, route_points[1:-1]
                 )
-                logging.info(f"Route divergence: max={max_div:.3f}km, avg={avg_div:.3f}km, divergent={div_pct:.1f}%")
+                logger.info(f"Route divergence: max={max_div:.3f}km, avg={avg_div:.3f}km, divergent={div_pct:.1f}%")
 
             # Detect transportation mode
             transport_mode = 'unknown'
@@ -374,7 +377,7 @@ class RoutePredictorOSRM:
                 transport_mode, actual_speed, mode_confidence = self.detect_transportation_mode(
                     total_distance, actual_duration_minutes, trajectory_count, estimated_time_minutes
                 )
-                logging.info(
+                logger.info(
                     f"Transport mode: {transport_mode} ({actual_speed:.1f} km/h, confidence: {mode_confidence:.1f})")
 
             route_info = {
@@ -399,9 +402,9 @@ class RoutePredictorOSRM:
                     ('osrm_match', 'osrm_match', route_info))
 
         except Exception as e:
-            logging.error(f"Error in OSRM match: {e}")
+            logger.error(f"Error in OSRM match: {e}")
             import traceback
-            logging.error(traceback.format_exc())
+            logger.error(traceback.format_exc())
             return self.create_trajectory_only_route(route_points, actual_duration_minutes)
 
     def create_route_between_stay_points(self, lat1, lon1, lat2, lon2, actual_duration_minutes=None):
@@ -452,7 +455,7 @@ class RoutePredictorOSRM:
                     ('osrm_route', 'osrm_route', route_info))
 
         except Exception as e:
-            logging.error(f"Error in OSRM route: {e}")
+            logger.error(f"Error in OSRM route: {e}")
             return self.create_trajectory_only_route([(lat1, lon1), (lat2, lon2)], actual_duration_minutes)
 
     def group_points_into_segments(self, points_df, time_threshold_minutes=30):
@@ -535,7 +538,7 @@ class RoutePredictorOSRM:
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(prediction_data, f, indent=2, ensure_ascii=False)
 
-        logging.info(f"Routes data saved to: {output_path}")
+        logger.info(f"Routes data saved to: {output_path}")
 
         return output_path
 
@@ -559,21 +562,21 @@ class RoutePredictorOSRM:
         else:
             end_datetime = points_df[time_col].max()
 
-        logging.info(f"Start datetime: {start_datetime}")
-        logging.info(f"End datetime: {end_datetime}")
+        logger.info(f"Start datetime: {start_datetime}")
+        logger.info(f"End datetime: {end_datetime}")
         points_df = points_df[points_df[time_col] >= start_datetime]
         points_df = points_df[points_df[time_col] <= end_datetime]
 
         if len(points_df) < 2:
-            logging.warning("Need at least 2 points to create routes")
+            logger.warning("Need at least 2 points to create routes")
             return "Need at least 2 points to create routes"
 
-        logging.info(
+        logger.info(
             f"Found {len(points_df)} points ({len(points_df[points_df['point_type'] == 'stay_point'])} stay points, {len(points_df[points_df['point_type'] == 'trajectory'])} trajectory points)")
 
         # Group points into segments
         segments = self.group_points_into_segments(points_df, time_threshold_minutes=30)
-        logging.info(f"Created {len(segments)} route segments")
+        logger.info(f"Created {len(segments)} route segments")
 
         # logging segment details
         for i, segment in enumerate(segments):
@@ -582,7 +585,7 @@ class RoutePredictorOSRM:
             segment_duration = (last_point['arrival_time'] - first_point['arrival_time']).total_seconds() / 60
             stay_count = sum(1 for p in segment if p['point_type'] == 'stay_point')
             traj_count = sum(1 for p in segment if p['point_type'] == 'trajectory')
-            logging.info(
+            logger.info(
                 f"Segment {i + 1}: {len(segment)} points ({stay_count} stay, {traj_count} trajectory), duration: {segment_duration:.1f}min")
 
         # Prepare visualization data
@@ -704,7 +707,7 @@ class RoutePredictorOSRM:
                 else:
                     segment_type = "Trajectory-to-Stay"
 
-                logging.info(
+                logger.info(
                     f"Creating route {segment_idx + 1} [{segment_type}]: {len(route_points)} points, actual time: {actual_travel_minutes:.1f}min")
 
                 # Use OSRM map matching for the route
@@ -713,7 +716,7 @@ class RoutePredictorOSRM:
                 )
 
                 if route_coords is None:
-                    logging.warning(f"Could not create route for segment {segment_idx + 1}")
+                    logger.warning(f"Could not create route for segment {segment_idx + 1}")
                     continue
 
                 route_color = self.get_time_color(departure_time, start_time, end_time)

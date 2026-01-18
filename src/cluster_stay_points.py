@@ -1,8 +1,11 @@
-from utils.location_pipeline_config_manager import LocationPipelineConfig 
+from utils.location_pipeline_config_manager import LocationPipelineConfig
 import numpy as np
 import pandas as pd
 import logging
 from sklearn.cluster import DBSCAN
+
+logger = logging.getLogger(__name__)
+
 
 class ClusterStayPoints:
     def __init__(self, config: LocationPipelineConfig) -> None:
@@ -23,15 +26,15 @@ class ClusterStayPoints:
             # Enhanced format - filter only stay_points
             stay_points_mask = df_complete['point_type'] == 'stay_point'
             stay_points_df = df_complete[stay_points_mask].copy()
-            logging.info(f"Enhanced format detected: {len(stay_points_df)} stay_points, {len(df_complete) - len(stay_points_df)} trajectory points")
+            logger.info(f"Enhanced format detected: {len(stay_points_df)} stay_points, {len(df_complete) - len(stay_points_df)} trajectory points")
         else:
             # Legacy format - all points are stay points
             stay_points_mask = df_complete.index
             stay_points_df = df_complete.copy()
-            logging.info(f"Legacy format detected: {len(stay_points_df)} stay_points")
+            logger.info(f"Legacy format detected: {len(stay_points_df)} stay_points")
 
         if len(stay_points_df) == 0:
-            logging.warning("Warning: No stay_points found in the dataset")
+            logger.warning("Warning: No stay_points found in the dataset")
             return df_complete, np.array([])
 
         coords = stay_points_df[['lat', 'lon']].to_numpy()
