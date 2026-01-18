@@ -1,7 +1,5 @@
-from ast import List
 import logging
 from datetime import datetime
-from typing import Any
 from pyspark.sql import DataFrame
 from utils.location_pipeline_config_manager import LocationPipelineConfig
 from pyspark.sql.functions import to_timestamp, col, date_format

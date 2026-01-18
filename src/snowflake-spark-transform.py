@@ -3,17 +3,26 @@ Spark job to connect to Snowflake, retrieve data, and transform SRC column to lo
 """
 
 import os
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+logger = logging.getLogger(__name__)
+
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import lower, col
 from snowflake_config_manager import SnowflakeConfig
 from location_pipeline_config_manager import LocationPipelineConfig
 
-location_pipeline_config = LocationPipelineConfig() 
-print(f"Preparing locations pipeline with the following settings: {location_pipeline_config}")
+location_pipeline_config = LocationPipelineConfig()
+logger.info(f"Preparing locations pipeline with the following settings: {location_pipeline_config}")
 
-snowflake_config: dict = SnowflakeConfig()
+snowflake_config = SnowflakeConfig()
 snowflake_options = snowflake_config.snowflake_options
-print(f"Connecting to Snowflake table: {snowflake_options["sfDatabase"]}.{snowflake_options['sfSchema']}.{snowflake_config.table_name}")
+logger.info(f"Connecting to Snowflake table: {snowflake_options['sfDatabase']}.{snowflake_options['sfSchema']}.{snowflake_config.table_name}")
 
 query = f"""
     SELECT * 
@@ -35,25 +44,25 @@ df = spark.read \
     .option("query", query) \
     .load()
 
-print("Data retrieved from Snowflake:")
-print(f"Number of rows: {df.count()}")
+logger.info("Data retrieved from Snowflake:")
+logger.info(f"Number of rows: {df.count()}")
 df.printSchema()
 df.show(truncate=False)
 
 # Transform SRC column to lowercase
 # This transformation will be distributed across Spark workers
 if "SRC" in df.columns:
-    print("\nTransforming SRC column to lowercase...")
+    logger.info("Transforming SRC column to lowercase...")
     df_transformed = df.withColumn("SRC", lower(col("SRC")))
-    
-    print("\nTransformed data:")
+
+    logger.info("Transformed data:")
     df_transformed.show(truncate=False)
-    
-    print("\nSample of transformed SRC column:")
+
+    logger.info("Sample of transformed SRC column:")
     df_transformed.select("SRC").show(truncate=False)
 else:
-    print(f"\nWarning: Column 'SRC' not found in the table.")
-    print(f"Available columns: {', '.join(df.columns)}")
+    logger.warning(f"Column 'SRC' not found in the table.")
+    logger.info(f"Available columns: {', '.join(df.columns)}")
     df.show(truncate=False)
 
 # Stop Spark session

@@ -1,11 +1,14 @@
 import os
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 env_path = Path(__file__).parent / ".env"
 if env_path.exists():
     load_dotenv(env_path)
-    print(f"Loaded environment variables from {env_path}")
+    logger.info(f"Loaded environment variables from {env_path}")
 else:
     # Fallback: try to load from current directory
     load_dotenv()
