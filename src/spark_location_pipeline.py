@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from data_cleanser import DataCleanser
-from points_qualifier import PointsQualifier
+from points_qualifier_ps import PointsQualifier
 from cluster_stay_points import ClusterStayPoints
 from snowflake_config_manager import SnowflakeConfig
 from utils.location_pipeline_config_manager import LocationPipelineConfig

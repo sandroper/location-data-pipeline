@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from data_cleanser_ps import DataCleanser
-from points_qualifier import PointsQualifier
+from points_qualifier_ps import PointsQualifier
 from cluster_stay_points import ClusterStayPoints
 from snowflake_config_manager import SnowflakeConfig
 from utils.location_pipeline_config_manager import LocationPipelineConfig
@@ -74,9 +74,11 @@ cleansed_df = data_cleanser.cleanse(df)
 logger.info("==================== After cleaning: ")
 logger.info(cleansed_df.show())
 
-# logger.info("STEP 2/5: Qualifying data points")
-# points_qualifier = PointsQualifier(location_pipeline_config)
-# qualified_df = points_qualifier.get_stay_points(cleansed_df)
+logger.info("STEP 2/5: Qualifying data points")
+points_qualifier = PointsQualifier(location_pipeline_config)
+qualified_df = points_qualifier.get_stay_points(cleansed_df)
+
+logger.info(qualified_df .show())
 #
 # logger.info("STEP 3/5: Clustering data points")
 # clusterer = ClusterStayPoints(location_pipeline_config)
