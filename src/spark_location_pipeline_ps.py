@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
-from data_cleanser import DataCleanser
+from data_cleanser_ps import DataCleanser
 from points_qualifier import PointsQualifier
 from cluster_stay_points import ClusterStayPoints
 from snowflake_config_manager import SnowflakeConfig
@@ -72,30 +72,30 @@ logger.info("STEP 1/5: Extracting data for devices")
 data_cleanser = DataCleanser(location_pipeline_config)
 cleansed_df = data_cleanser.cleanse(df)
 logger.info("==================== After cleaning: ")
-logger.debug(cleansed_df)
+logger.info(cleansed_df.show())
 
-logger.info("STEP 2/5: Qualifying data points")
-points_qualifier = PointsQualifier(location_pipeline_config)
-qualified_df = points_qualifier.get_stay_points(cleansed_df)
-
-logger.info("STEP 3/5: Clustering data points")
-clusterer = ClusterStayPoints(location_pipeline_config)
-clustered_df, cluster_labels = clusterer.cluster_stay_points(qualified_df)
-logger.debug(clustered_df)
-
-logger.info("STEP 4/5: Creating trajectories and interactive route map")
-start_date = clustered_df['arrival_time'].min()
-end_date = clustered_df['arrival_time'].max()
-route_predictor = RoutePredictorOSRM(location_pipeline_config, clustered_df, start_date, end_date)
-routes_df, df_schema = route_predictor.create_enhanced_interactive_route_map()
-
-logger.info("STEP 5/5: Saving data to Snowflake")
-sdf_qualified = spark.createDataFrame(routes_df, schema=df_schema)
-# sdf_qualified.write \
-#     .format(SNOWFLAKE_SOURCE_NAME) \
-#     .options(**snowflake_options) \
-#     .option("dbtable", "t2") \
-#     .mode(SaveMode.Overwrite) \
-#     .save()
-
-logger.info(sdf_qualified.show())
+# logger.info("STEP 2/5: Qualifying data points")
+# points_qualifier = PointsQualifier(location_pipeline_config)
+# qualified_df = points_qualifier.get_stay_points(cleansed_df)
+#
+# logger.info("STEP 3/5: Clustering data points")
+# clusterer = ClusterStayPoints(location_pipeline_config)
+# clustered_df, cluster_labels = clusterer.cluster_stay_points(qualified_df)
+# logger.debug(clustered_df)
+#
+# logger.info("STEP 4/5: Creating trajectories and interactive route map")
+# start_date = clustered_df['arrival_time'].min()
+# end_date = clustered_df['arrival_time'].max()
+# route_predictor = RoutePredictorOSRM(location_pipeline_config, clustered_df, start_date, end_date)
+# routes_df, df_schema = route_predictor.create_enhanced_interactive_route_map()
+#
+# logger.info("STEP 5/5: Saving data to Snowflake")
+# sdf_qualified = spark.createDataFrame(routes_df, schema=df_schema)
+# # sdf_qualified.write \
+# #     .format(SNOWFLAKE_SOURCE_NAME) \
+# #     .options(**snowflake_options) \
+# #     .option("dbtable", "t2") \
+# #     .mode(SaveMode.Overwrite) \
+# #     .save()
+#
+# logger.info(sdf_qualified.show())
