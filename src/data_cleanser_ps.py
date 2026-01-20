@@ -133,7 +133,7 @@ class DataCleanser:
     def __remove_stationary_outliers__(self, df: DataFrame) -> DataFrame:
         initial_count = df.count()
 
-        window_spec = Window.orderBy('event_ts')
+        window_spec = Window.partitionBy('device_id').orderBy('event_ts')
 
         # Get previous and next point coordinates
         df = (df
@@ -170,8 +170,8 @@ class DataCleanser:
         return df
 
     def __compute_location_params__(self, df: DataFrame) -> DataFrame:
-        # Define window ordered by event_ts
-        window_spec = Window.orderBy('event_ts')
+        # Define window partitioned by device and ordered by event_ts
+        window_spec = Window.partitionBy('device_id').orderBy('event_ts')
 
         # Get previous point's coordinates and timestamp using lag()
         df = (df

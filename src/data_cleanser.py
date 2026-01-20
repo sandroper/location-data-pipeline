@@ -2,7 +2,6 @@ import logging
 from datetime import datetime
 from pyspark.sql import DataFrame
 from utils.location_pipeline_config_manager import LocationPipelineConfig
-from pyspark.sql.functions import to_timestamp, col, date_format
 from geopy.distance import geodesic
 import pandas as pd
 

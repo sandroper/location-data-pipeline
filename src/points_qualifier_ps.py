@@ -62,7 +62,7 @@ class PointsQualifier:
         )
 
         # Define window for sequential processing, partitioned by device
-        window_ordered = Window.orderBy('event_ts_parsed')
+        window_ordered = Window.partitionBy('device_id').orderBy('event_ts_parsed')
 
         # Step 1: Add row numbers and calculate distance to previous point
         df = df.withColumn('row_num', row_number().over(window_ordered))
@@ -126,6 +126,7 @@ class PointsQualifier:
         stay_points = df.filter(
             (col('is_stay_point') == True) & (col('row_in_group') == 1)
         ).select(
+            col('device_id'),
             col('group_lat_mean').alias('lat'),
             col('group_lon_mean').alias('lon'),
             col('group_arrival').alias('arrival_time'),
@@ -139,6 +140,7 @@ class PointsQualifier:
         trajectory_points = df.filter(
             col('is_stay_point') == False
         ).select(
+            col('device_id'),
             col('lat'),
             col('lon'),
             col('event_ts_parsed').alias('arrival_time'),

@@ -24,7 +24,7 @@ class RoutePredictorOSRM:
     - Returns the actual road geometry
     """
 
-    def __init__(self, config: LocationPipelineConfig, trajectory_data_df, start_date, end_date):
+    def __init__(self, config: LocationPipelineConfig, trajectory_data_df: pd.DataFrame, start_date, end_date):
         self.trajectory_data_df = trajectory_data_df
         self.start_date = start_date
         self.end_date = end_date
