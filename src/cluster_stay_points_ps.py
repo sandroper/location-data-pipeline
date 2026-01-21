@@ -1,12 +1,11 @@
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
     col, lit, when, row_number, monotonically_increasing_id,
-    avg, sum as spark_sum, broadcast, radians, cos, sin, sqrt, asin
+    avg, sum as spark_sum, count, broadcast, floor, concat_ws,
+    dense_rank, first
 )
 from pyspark.sql.window import Window
 from pyspark.sql.types import LongType, DoubleType
-from pyspark.ml.feature import VectorAssembler
-from pyspark.ml.clustering import BisectingKMeans
 from utils.location_pipeline_config_manager import LocationPipelineConfig
 import logging
 
@@ -21,10 +20,10 @@ class ClusterStayPoints:
 
     def cluster_stay_points(self, device_data: DataFrame) -> tuple[DataFrame, DataFrame]:
         """
-        Cluster stay points using DBSCAN via applyInPandas for distributed processing.
+        Cluster stay points using grid-based spatial clustering.
 
-        Each device's stay points are clustered independently in parallel across
-        Spark workers using sklearn's DBSCAN.
+        Pure Spark implementation that clusters each device's stay points
+        independently using partitionBy('device_id').
 
         Args:
             device_data: Spark DataFrame with columns including device_id, lat, lon, point_type
@@ -57,8 +56,8 @@ class ClusterStayPoints:
             labels_df = stay_points_df.select('point_id', lit(-1).alias('cluster_id'))
             return df_complete, labels_df
 
-        # Perform clustering using Spark MLlib BisectingKMeans
-        clustered_stay_points = self._cluster_with_bisecting_kmeans(stay_points_df)
+        # Perform grid-based clustering (pure Spark, partitioned by device_id)
+        clustered_stay_points = self._cluster_with_grid(stay_points_df)
 
         # Calculate centroids for each cluster
         clustered_with_centroids = self._calculate_centroids(clustered_stay_points)
@@ -71,115 +70,142 @@ class ClusterStayPoints:
         else:
             result_df = clustered_with_centroids
 
-        # Order by arrival_time for consistent output
+        # Order by device_id and arrival_time for consistent output
         if 'arrival_time' in result_df.columns:
-            result_df = result_df.orderBy('arrival_time')
+            result_df = result_df.orderBy('device_id', 'arrival_time')
 
         # Extract labels for return
         labels_df = clustered_with_centroids.select('point_id', 'cluster_id')
 
         return result_df, labels_df
 
-    def _cluster_with_bisecting_kmeans(self, stay_points_df: DataFrame) -> DataFrame:
+    def _cluster_with_grid(self, stay_points_df: DataFrame) -> DataFrame:
         """
-        Cluster stay points using Spark MLlib's BisectingKMeans.
+        Cluster stay points using grid-based spatial clustering.
 
-        This is a pure Spark solution that scales to large datasets.
-        BisectingKMeans is a hierarchical clustering algorithm that works well
-        for geographic clustering.
+        This is a pure Spark implementation that:
+        1. Assigns each point to a grid cell based on lat/lon
+        2. Groups points in the same cell as a cluster
+        3. Filters clusters with fewer than min_samples as noise
+        4. All operations are partitioned by device_id
 
-        The number of clusters is estimated based on the eps parameter:
-        - Points within eps meters should ideally be in the same cluster
-        - We estimate k based on the geographic spread of the data
+        The grid cell size is determined by clustering_eps (in meters).
         """
         eps_meters = self.clustering_eps
         min_samples = self.clustering_min_samples
 
-        # Drop existing cluster_id column if present (will be recreated by BisectingKMeans)
+        # Drop existing cluster_id column if present
         if 'cluster_id' in stay_points_df.columns:
             stay_points_df = stay_points_df.drop('cluster_id')
 
-        # Convert lat/lon to Cartesian coordinates for better distance calculations
-        # This provides more accurate clustering than using raw lat/lon
-        earth_radius_m = 6371000
+        # Calculate grid cell size in degrees
+        # At equator: 1 degree latitude ≈ 111,000 meters
+        # 1 degree longitude ≈ 111,000 * cos(lat) meters
+        # Using a simplified approximation for grid cell size
+        meters_per_degree = 111000.0
+        cell_size_deg = eps_meters / meters_per_degree
 
+        # Assign each point to a grid cell
         stay_points_df = stay_points_df.withColumn(
-            'lat_rad', radians(col('lat'))
+            'grid_lat',
+            floor(col('lat') / cell_size_deg)
         ).withColumn(
-            'lon_rad', radians(col('lon'))
+            'grid_lon',
+            floor(col('lon') / cell_size_deg)
         ).withColumn(
-            # Convert to 3D Cartesian coordinates
-            'x', cos(col('lat_rad')) * cos(col('lon_rad')) * earth_radius_m
-        ).withColumn(
-            'y', cos(col('lat_rad')) * sin(col('lon_rad')) * earth_radius_m
-        ).withColumn(
-            'z', sin(col('lat_rad')) * earth_radius_m
+            'grid_cell',
+            concat_ws('_', col('grid_lat').cast('string'), col('grid_lon').cast('string'))
         )
 
-        # Create feature vector for clustering
-        assembler = VectorAssembler(
-            inputCols=['x', 'y', 'z'],
-            outputCol='features'
-        )
-        feature_df = assembler.transform(stay_points_df)
+        # Create cluster IDs per device based on grid cells
+        # Points in the same grid cell (for the same device) get the same cluster
+        if 'device_id' in stay_points_df.columns:
+            # Create unique cluster ID per device and grid cell
+            cluster_window = Window.partitionBy('device_id').orderBy('grid_cell')
+            stay_points_df = stay_points_df.withColumn(
+                'cluster_id',
+                dense_rank().over(cluster_window) - 1
+            )
 
-        # Estimate number of clusters based on data spread and eps
-        # Get approximate bounds to estimate k
-        bounds = stay_points_df.agg(
-            spark_sum(lit(1)).alias('count'),
-            avg('lat').alias('avg_lat'),
-            avg('lon').alias('avg_lon')
-        ).collect()[0]
+            # Count points per cluster (per device)
+            cluster_count_window = Window.partitionBy('device_id', 'cluster_id')
+        else:
+            cluster_window = Window.orderBy('grid_cell')
+            stay_points_df = stay_points_df.withColumn(
+                'cluster_id',
+                dense_rank().over(cluster_window) - 1
+            )
+            cluster_count_window = Window.partitionBy('cluster_id')
 
-        point_count = bounds['count']
-
-        # Estimate k: assume points spread over area, eps defines cluster radius
-        # This is a heuristic - adjust based on your data characteristics
-        # More conservative estimate to avoid over-clustering
-        estimated_k = max(2, min(point_count // min_samples, int(point_count ** 0.5)))
-
-        logger.info(f"Clustering {point_count} points with estimated k={estimated_k}")
-
-        # Apply BisectingKMeans
-        bisecting_kmeans = BisectingKMeans(
-            k=estimated_k,
-            featuresCol='features',
-            predictionCol='cluster_id',
-            minDivisibleClusterSize=min_samples,
-            seed=42
+        # Add cluster size
+        stay_points_df = stay_points_df.withColumn(
+            'cluster_size',
+            count('*').over(cluster_count_window)
         )
 
-        model = bisecting_kmeans.fit(feature_df)
-        clustered_df = model.transform(feature_df)
-
-        # Post-process: mark small clusters as noise (-1)
-        # Count points per cluster
-        cluster_counts = clustered_df.groupBy('cluster_id').count()
-
-        # Clusters with fewer than min_samples are noise
-        noise_clusters = cluster_counts.filter(col('count') < min_samples) \
-            .select('cluster_id')
-
-        # Join to mark noise points
-        clustered_df = clustered_df.join(
-            broadcast(noise_clusters.withColumn('is_noise', lit(True))),
+        # Mark clusters with fewer than min_samples as noise (-1)
+        stay_points_df = stay_points_df.withColumn(
             'cluster_id',
-            'left'
-        ).withColumn(
-            'cluster_id',
-            when(col('is_noise') == True, lit(-1)).otherwise(col('cluster_id'))
-        ).drop('is_noise')
+            when(col('cluster_size') < min_samples, lit(-1))
+            .otherwise(col('cluster_id'))
+        )
+
+        # Renumber valid clusters to be consecutive (0, 1, 2, ...)
+        # Get distinct valid clusters per device and assign new IDs
+        if 'device_id' in stay_points_df.columns:
+            valid_clusters = stay_points_df.filter(col('cluster_id') >= 0) \
+                .select('device_id', 'cluster_id').distinct()
+
+            renumber_window = Window.partitionBy('device_id').orderBy('cluster_id')
+            cluster_mapping = valid_clusters.withColumn(
+                'new_cluster_id',
+                row_number().over(renumber_window) - 1
+            )
+
+            stay_points_df = stay_points_df.join(
+                broadcast(cluster_mapping),
+                ['device_id', 'cluster_id'],
+                'left'
+            ).withColumn(
+                'cluster_id',
+                when(col('cluster_id') == -1, lit(-1))
+                .otherwise(col('new_cluster_id'))
+            ).drop('new_cluster_id')
+        else:
+            valid_clusters = stay_points_df.filter(col('cluster_id') >= 0) \
+                .select('cluster_id').distinct()
+
+            renumber_window = Window.orderBy('cluster_id')
+            cluster_mapping = valid_clusters.withColumn(
+                'new_cluster_id',
+                row_number().over(renumber_window) - 1
+            )
+
+            stay_points_df = stay_points_df.join(
+                broadcast(cluster_mapping),
+                'cluster_id',
+                'left'
+            ).withColumn(
+                'cluster_id',
+                when(col('cluster_id') == -1, lit(-1))
+                .otherwise(col('new_cluster_id'))
+            ).drop('new_cluster_id')
 
         # Clean up temporary columns
-        clustered_df = clustered_df.drop('lat_rad', 'lon_rad', 'x', 'y', 'z', 'features')
+        stay_points_df = stay_points_df.drop('grid_lat', 'grid_lon', 'grid_cell', 'cluster_size')
 
         # Log clustering results
-        num_clusters = clustered_df.filter(col('cluster_id') != -1) \
-            .select('cluster_id').distinct().count()
-        noise_count = clustered_df.filter(col('cluster_id') == -1).count()
-        logger.info(f"BisectingKMeans found {num_clusters} clusters, {noise_count} noise points")
+        if 'device_id' in stay_points_df.columns:
+            num_clusters = stay_points_df.filter(col('cluster_id') >= 0) \
+                .select('device_id', 'cluster_id').distinct().count()
+        else:
+            num_clusters = stay_points_df.filter(col('cluster_id') >= 0) \
+                .select('cluster_id').distinct().count()
 
-        return clustered_df
+        noise_count = stay_points_df.filter(col('cluster_id') == -1).count()
+        logger.info(f"Grid clustering found {num_clusters} clusters, {noise_count} noise points")
+
+        return stay_points_df
 
     def _calculate_centroids(self, clustered_df: DataFrame) -> DataFrame:
         """
