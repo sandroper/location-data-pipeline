@@ -18,6 +18,7 @@ from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import col
 from snowflake_config_manager import SnowflakeConfig
 from utils.location_pipeline_config_manager import LocationPipelineConfig
+from utils.dataframe_dumper import DataFrameDumper
 
 from data_cleanser_ps import DataCleanser
 from points_qualifier_ps import PointsQualifier
@@ -28,7 +29,7 @@ SNOWFLAKE_SOURCE_NAME = "net.snowflake.spark.snowflake"
 
 
 def create_spark_session() -> SparkSession:
-    """Create and configure SparkSession."""
+    """Create and configure SparkSession with event logging for History Server."""
     spark = SparkSession.builder \
         .appName("location-data-pipeline") \
         .getOrCreate()
@@ -52,6 +53,9 @@ def run_pipeline():
     snowflake_config = SnowflakeConfig()
     snowflake_options = snowflake_config.snowflake_options
     logger.info(f"Connecting to: {snowflake_options['sfDatabase']}.{snowflake_options['sfSchema']}.{snowflake_config.table_name}")
+
+    # Initialize debug dumper for CSV output
+    dumper = DataFrameDumper()
 
     # Create Spark session
     spark = create_spark_session()
@@ -91,6 +95,8 @@ def run_pipeline():
     data_cleanser = DataCleanser(location_pipeline_config)
     cleansed_df = data_cleanser.cleanse(df)
 
+    # dumper.dump(cleansed_df, "cleansed")
+
     cleansed_count = cleansed_df.count()
     logger.info(f"After cleansing: {cleansed_count} records")
 
@@ -98,6 +104,8 @@ def run_pipeline():
     logger.info("STEP 2/5: Detecting stay points (partitioned by device_id)")
     points_qualifier = PointsQualifier(location_pipeline_config)
     qualified_df = points_qualifier.get_stay_points(cleansed_df)
+
+    dumper.dump(qualified_df, "qualified")
 
     stay_point_count = qualified_df.filter(col('point_type') == 'stay_point').count()
     trajectory_count = qualified_df.filter(col('point_type') == 'trajectory').count()
@@ -116,7 +124,6 @@ def run_pipeline():
     route_predictor = RoutePredictorOSRM(location_pipeline_config, pd_clustered_df, start_date, end_date)
     routes_df, df_schema = route_predictor.create_enhanced_interactive_route_map()
 
-    # Cache final results
     clustered_df.cache()
 
     # ========== STEP 5: Getting the final DataFrame ==========
@@ -143,17 +150,7 @@ def run_pipeline():
 
     logger.info("=" * 60)
 
-    final_df.show(20, truncate=False)
-
-    # Write results back to Snowflake (uncomment when ready)
-    # clustered_df.write \
-    #     .format(SNOWFLAKE_SOURCE_NAME) \
-    #     .options(**snowflake_options) \
-    #     .option("dbtable", "processed_locations") \
-    #     .mode("overwrite") \
-    #     .save()
-
-    return clustered_df
+    dumper.dump(clustered_df, "clustered")
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@ services:
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
     volumes:
+      - ./data:/opt/spark/data
       - ./spark/spark-data:/opt/spark/work-dir
       - ./spark/spark-logs:/opt/spark/spark-events
     networks:
@@ -24,7 +25,7 @@ services:
   spark-history-server:
     container_name: spark-history
     image: tkl-pyspark:0.1
-    command: /opt/spark/sbin/start-history-server.sh
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
     depends_on:
       - spark-master
     env_file:
@@ -35,6 +36,8 @@ services:
       - ./spark/spark-logs:/opt/spark/spark-events
     ports:
       - '18080:18080'
+    networks:
+      - spark-network
 
   spark-worker-1:
     image: tkl-pyspark:0.1
