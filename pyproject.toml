@@ -23,6 +23,7 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
+    "venv-pack>=0.2.0",
 ]
 
 [tool.pytest.ini_options]
@@ -31,3 +32,8 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short -p no:xdist"
+
+[dependency-groups]
+dev = [
+    "folium>=0.20.0",
+]

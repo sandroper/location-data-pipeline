@@ -93,7 +93,10 @@ export DEPLOY_USER=myuser
 export DEPLOY_HOST=myserver.com
 export DEPLOY_PATH=/home/myuser/location-data-pipeline
 
-# Sync source files to remote
+# Pack virtual environment (includes all Python dependencies)
+./scripts/pack-venv.sh
+
+# Sync source files + packed venv to remote
 ./scripts/deploy.sh
 
 # Sync and run pipeline
@@ -109,6 +112,8 @@ export DEPLOY_PATH=/home/myuser/location-data-pipeline
 # Dry run - see what would be transferred
 ./scripts/deploy.sh --dry-run
 ```
+
+The packed venv (`pyspark_venv.tar.gz`) is shipped to executors via `--archives`, eliminating the need to install dependencies on remote servers.
 
 ## Configuration
 

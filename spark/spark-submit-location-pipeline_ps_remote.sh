@@ -102,15 +102,42 @@ if [ ! -f "$KEY_FILE_PATH" ]; then
     echo "The Python code will attempt to locate it using SNOWFLAKE_KEY_PATH from .env"
 fi
 
-# Submit the job to the Spark standalone cluster
-# The master URL connects to localhost:7077 (exposed by docker-compose)
+# Configure Python environment for PySpark
+VENV_ARCHIVE="$PROJECT_ROOT/pyspark_venv.tar.gz"
+LOCAL_VENV="$PROJECT_ROOT/.venv/bin/python"
+ARCHIVES_OPT=""
+
+if [ ! -f "$VENV_ARCHIVE" ]; then
+    echo "ERROR: Packed venv not found at $VENV_ARCHIVE"
+    echo "Run './scripts/remote-setup.sh' to create it on the remote server"
+    exit 1
+fi
+
+if [ ! -f "$LOCAL_VENV" ]; then
+    echo "ERROR: Local venv not found at $LOCAL_VENV"
+    echo "Run './scripts/remote-setup.sh' to create it on the remote server"
+    exit 1
+fi
+
+echo "Using packed virtual environment: $VENV_ARCHIVE"
+ARCHIVES_OPT="--archives ${VENV_ARCHIVE}#venv"
+# Driver uses local venv, executors use unpacked archive
+export PYSPARK_DRIVER_PYTHON="$LOCAL_VENV"
+export PYSPARK_PYTHON="./venv/bin/python"
+echo "Driver using: $LOCAL_VENV"
+echo "Executors using: ./venv/bin/python (from archive)"
+
+# Submit the job to the remote Spark cluster in client mode
+# Client mode: driver runs locally on the submitting machine
 # The Snowflake connector JARs will be downloaded automatically
 spark-submit \
-    --master spark://10.239.23.4:7077 \
-    --deploy-mode cluster \
-    --supervise \
+    --master spark://192.168.18.186:7077 \
+    --deploy-mode client \
     --name "spark-location-pipeline" \
     --packages "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.13:3.1.6" \
     --conf "spark.sql.execution.arrow.pyspark.enabled=true" \
+    --conf "spark.pyspark.python=./venv/bin/python" \
+    --conf "spark.pyspark.driver.python=$LOCAL_VENV" \
+    $ARCHIVES_OPT \
     "$PYTHON_FILE"
 

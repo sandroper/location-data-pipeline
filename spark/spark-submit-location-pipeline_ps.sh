@@ -102,6 +102,25 @@ if [ ! -f "$KEY_FILE_PATH" ]; then
     echo "The Python code will attempt to locate it using SNOWFLAKE_KEY_PATH from .env"
 fi
 
+# Configure Python environment for PySpark
+VENV_ARCHIVE="$PROJECT_ROOT/pyspark_venv.tar.gz"
+ARCHIVES_OPT=""
+
+if [ -f "$VENV_ARCHIVE" ]; then
+    echo "Using packed virtual environment: $VENV_ARCHIVE"
+    ARCHIVES_OPT="--archives ${VENV_ARCHIVE}#venv"
+    # Executors will use the unpacked venv
+    export PYSPARK_PYTHON="./venv/bin/python"
+    # Driver uses the local venv
+    if [ -f "$PROJECT_ROOT/.venv/bin/python" ]; then
+        export PYSPARK_DRIVER_PYTHON="$PROJECT_ROOT/.venv/bin/python"
+    fi
+else
+    echo "Warning: Packed venv not found at $VENV_ARCHIVE"
+    echo "Run './scripts/pack-venv.sh' to create it"
+    echo "Falling back to system Python (may fail if dependencies are missing)"
+fi
+
 # Submit the job to the Spark standalone cluster
 # The master URL connects to localhost:7077 (exposed by docker-compose)
 # The Snowflake connector JARs will be downloaded automatically
@@ -111,5 +130,6 @@ spark-submit \
     --name "snowflake-transform" \
     --packages "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.13:3.1.6" \
     --conf "spark.sql.execution.arrow.pyspark.enabled=true" \
+    $ARCHIVES_OPT \
     "$PYTHON_FILE"
 

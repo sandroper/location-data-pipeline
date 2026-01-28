@@ -9,6 +9,7 @@ A PySpark-based pipeline for processing location data from Snowflake, built on *
 - [Configuration](#configuration)
 - [Starting the Spark Cluster](#starting-the-spark-cluster)
 - [Running the Pipeline](#running-the-pipeline)
+- [Remote Deployment](#remote-deployment)
 - [Pipeline Architecture](#pipeline-architecture)
 - [Debugging and Output](#debugging-and-output)
 - [Troubleshooting](#troubleshooting)
@@ -266,6 +267,112 @@ ENV_FILE=.env.dev ./spark/spark-submit-location-pipeline.sh
 
 ---
 
+## Remote Deployment
+
+This section covers deploying and running the pipeline on a remote Spark cluster without manual dependency installation on remote servers.
+
+### Packaging Dependencies with venv-pack
+
+The project uses [venv-pack](https://jcrist.github.io/venv-pack/) to create a portable archive of the Python virtual environment. This archive is shipped to Spark executors via the `--archives` option, eliminating the need to install dependencies on remote servers.
+
+#### 1. Install Development Dependencies
+
+```bash
+uv sync --group dev
+```
+
+#### 2. Pack the Virtual Environment
+
+```bash
+./scripts/pack-venv.sh
+```
+
+This creates `pyspark_venv.tar.gz` in the project root, containing all Python dependencies (~200-400MB depending on packages).
+
+#### 3. When to Re-pack
+
+Re-run `./scripts/pack-venv.sh` after:
+- Adding or updating dependencies in `pyproject.toml`
+- Running `uv sync` to update packages
+
+### Deploy Script
+
+The `scripts/deploy.sh` script syncs code and the packed virtual environment to a remote server via rsync.
+
+#### Setup
+
+```bash
+# Configure remote server (one-time, or add to shell profile)
+export DEPLOY_USER=your_username
+export DEPLOY_HOST=your_server.com
+export DEPLOY_PATH=/home/your_username/location-data-pipeline
+```
+
+#### Usage
+
+```bash
+# Sync source files and packed venv to remote
+./scripts/deploy.sh
+
+# Sync with a specific env file (deployed as .env on remote)
+./scripts/deploy.sh --env .env.prod
+
+# Sync and run the pipeline
+./scripts/deploy.sh --env .env.prod --run
+
+# Watch mode - auto-sync on file changes (requires fswatch)
+./scripts/deploy.sh --watch
+
+# Dry run - see what would be transferred
+./scripts/deploy.sh --dry-run
+```
+
+### Running on Remote Cluster
+
+For remote Spark clusters (not local Docker), use the cluster-specific submit script:
+
+```bash
+# On the remote server
+./spark/spark-submit-location-pipeline_ps_remote.sh
+```
+
+This script:
+- Requires `pyspark_venv.tar.gz` to exist (will error if missing)
+- Uses `--deploy-mode cluster` (driver runs on a worker node)
+- Ships the packed venv via `--archives`
+- Configures `spark.pyspark.python` and `spark.pyspark.driver.python` to use the unpacked venv
+
+### Complete Deployment Workflow
+
+```bash
+# 1. Make code changes locally
+
+# 2. Pack venv (only needed after dependency changes)
+./scripts/pack-venv.sh
+
+# 3. Deploy to remote server
+./scripts/deploy.sh --env .env.prod
+
+# 4. SSH to remote and run (or use --run flag in step 3)
+ssh your_server
+cd location-data-pipeline
+./spark/spark-submit-location-pipeline_ps_remote.sh
+```
+
+### Iterative Development
+
+For rapid iteration during development:
+
+```bash
+# Terminal 1: Watch for changes and auto-sync
+./scripts/deploy.sh --watch
+
+# Terminal 2: Run pipeline on remote after each sync
+ssh your_server "cd location-data-pipeline && ./spark/spark-submit-location-pipeline_ps_remote.sh"
+```
+
+---
+
 ## Pipeline Architecture
 
 ### Pipeline Stages
@@ -425,6 +532,7 @@ location-data-pipeline/
 ├── .env.example            # Example configuration template
 ├── pyproject.toml          # UV/Python project configuration
 ├── uv.lock                 # UV lock file
+├── pyspark_venv.tar.gz     # Packed virtual environment (generated)
 ├── README.md               # This file
 │
 ├── docker/
@@ -432,9 +540,14 @@ location-data-pipeline/
 │   ├── Dockerfile          # Spark 4.1 worker image (based on apache/spark:4.1.0)
 │   └── osrm/               # OSRM routing server data
 │
+├── scripts/
+│   ├── deploy.sh           # Remote deployment via rsync
+│   └── pack-venv.sh        # Pack virtual environment for distribution
+│
 ├── spark/
-│   ├── spark-submit-location-pipeline_ps.sh  # Pure Spark launcher
-│   └── spark-submit-location-pipeline.sh     # Pandas-based launcher
+│   ├── spark-submit-location-pipeline_ps.sh     # Pure Spark launcher (local)
+│   ├── spark-submit-location-pipeline.sh        # Pandas-based launcher (local)
+│   └── spark-submit-location-pipeline_ps_remote.sh  # Pure Spark launcher (remote cluster)
 │
 └── src/
     ├── spark_location_pipeline_ps.py   # Pure Spark pipeline
