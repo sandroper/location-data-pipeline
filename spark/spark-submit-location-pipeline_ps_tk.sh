@@ -107,8 +107,9 @@ fi
 # The Snowflake connector JARs will be downloaded automatically
 spark-submit \
     --master spark://10.239.23.4:7077 \
-    --deploy-mode client \
-    --name "snowflake-transform" \
+    --deploy-mode cluster \
+    --supervise \
+    --name "spark-location-pipeline" \
     --packages "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.13:3.1.6" \
     --conf "spark.sql.execution.arrow.pyspark.enabled=true" \
     "$PYTHON_FILE"
