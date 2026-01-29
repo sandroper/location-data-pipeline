@@ -148,6 +148,8 @@ def run_pipeline():
     # Show sample output
     clustered_df.show(20, truncate=False)
 
+    final_df.show(20, truncate=False)
+
     logger.info("=" * 60)
 
     dumper.dump(clustered_df, "clustered")
