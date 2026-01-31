@@ -507,7 +507,7 @@ class OSRMRoutePredictorPairwise:
 
         return segments
 
-    def predict_routes(self, save_routes=True):
+    def predict_routes(self):
         """
         Main method to predict routes using pairwise matching and generate JSON output.
         Returns the path to the generated JSON file.

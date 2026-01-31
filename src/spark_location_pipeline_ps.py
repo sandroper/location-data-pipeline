@@ -58,7 +58,7 @@ def run_pipeline():
     logger.info(f"Connecting to: {snowflake_options['sfDatabase']}.{snowflake_options['sfSchema']}.{snowflake_config.table_name}")
 
     # Initialize debug dumper for CSV output
-    dumper = DataFrameDumper()
+    dumper = DataFrameDumper(location_pipeline_config)
 
     # Create Spark session
     spark = create_spark_session()
@@ -98,7 +98,8 @@ def run_pipeline():
     data_cleanser = DataCleanser(location_pipeline_config)
     cleansed_df = data_cleanser.cleanse(df)
 
-    # dumper.dump(cleansed_df, "cleansed")
+    if location_pipeline_config.save_routes_json:
+        dumper.dump(cleansed_df, "cleansed")
 
     cleansed_count = cleansed_df.count()
     logger.info(f"After cleansing: {cleansed_count} records")
@@ -108,7 +109,8 @@ def run_pipeline():
     points_qualifier = PointsQualifier(location_pipeline_config)
     qualified_df = points_qualifier.get_stay_points(cleansed_df)
 
-    dumper.dump(qualified_df, "qualified")
+    if location_pipeline_config.save_routes_json:
+        dumper.dump(qualified_df, "qualified")
 
     stay_point_count = qualified_df.filter(col('point_type') == 'stay_point').count()
     trajectory_count = qualified_df.filter(col('point_type') == 'trajectory').count()
@@ -119,13 +121,16 @@ def run_pipeline():
     clusterer = ClusterStayPoints(location_pipeline_config)
     clustered_df, cluster_labels = clusterer.cluster_stay_points(qualified_df)
 
+    if location_pipeline_config.save_routes_json:
+        dumper.dump(clustered_df, "clustered")
+
     # ========== STEP 4: Creating trajectories and interactive routes ==========
     logger.info("STEP 4/5: Creating trajectories and interactive routes")
     pd_clustered_df = clustered_df.toPandas()
     start_date = pd_clustered_df['arrival_time'].min()
     end_date = pd_clustered_df['arrival_time'].max()
     route_predictor = OSRMRoutePredictorPairwise(location_pipeline_config, pd_clustered_df, start_date, end_date)
-    routes_df, df_schema = route_predictor.predict_routes(save_routes=True)
+    routes_df, df_schema = route_predictor.predict_routes()
 
     clustered_df.cache()
 

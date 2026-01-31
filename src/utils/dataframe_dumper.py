@@ -6,6 +6,8 @@ import os
 import logging
 from pyspark.sql import DataFrame
 
+from utils.location_pipeline_config_manager import LocationPipelineConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,7 +22,7 @@ class DataFrameDumper:
     Defaults to /tmp/spark-pipeline-output.
     """
 
-    def __init__(self, output_dir: str = None):
+    def __init__(self, location_pipeline_config: LocationPipelineConfig):
         """
         Initialize the dumper with an output directory.
 
@@ -28,10 +30,7 @@ class DataFrameDumper:
             output_dir: Directory path for CSV output. If None, uses
                        PIPELINE_OUTPUT_DIR env var or defaults to /tmp/spark-pipeline-output
         """
-        self.output_dir = output_dir or os.environ.get(
-            'PIPELINE_OUTPUT_DIR',
-            '/tmp/spark-pipeline-output'
-        )
+        self.output_dir = location_pipeline_config.output_data_dir
         self._ensure_output_dir()
         logger.info(f"DataFrameDumper initialized with output directory: {self.output_dir}")
 
