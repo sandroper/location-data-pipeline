@@ -28,5 +28,8 @@ sf_*_key.p8
 #OSRM Data
 docker/osrm/data/work/
 
+# Pipeline output data
+docker/data/
+
 #IntelliJ working dirs
 .idea/
