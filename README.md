@@ -150,7 +150,11 @@ TIME_ZONE=UTC
 CLUSTERING_EPS=100
 CLUSTERING_MIN_SAMPLES=1
 CENTROID_METHOD=weighted_average
-OSRM_SERVER=http://osrm:5000
+OSRM_SERVER=http://127.0.0.1:5001
+
+# Output Configuration
+OUTPUT_DATA_DIR=./data/output
+SAVE_ROUTES_JSON=false
 
 # Debug output directory (optional)
 PIPELINE_OUTPUT_DIR=/tmp/spark-pipeline-output
@@ -173,6 +177,8 @@ Place your Snowflake private key file (`.p8`) in one of these locations:
 | `CLUSTERING_MIN_SAMPLES` | 1 | Minimum points per cluster |
 | `CENTROID_METHOD` | weighted_average | Centroid calculation: `average`, `weighted_average`, or `max_points` |
 | `OSRM_SERVER` | http://osrm:5000 | OSRM routing server URL |
+| `SAVE_ROUTES_JSON` | false | Save route prediction results to JSON file |
+| `OUTPUT_DATA_DIR` | ./data/output | Directory for JSON output files |
 
 ---
 
@@ -433,6 +439,23 @@ The Pure Spark pipeline partitions all operations by `device_id` to ensure:
 ---
 
 ## Debugging and Output
+
+### Route Prediction JSON Output
+
+The pipeline can save route prediction results to a JSON file for visualization or further analysis.
+
+**Enable JSON output:**
+```bash
+# In .env file
+SAVE_ROUTES_JSON=true
+OUTPUT_DATA_DIR=./docker/data
+```
+
+This generates a file like `predicted_routes_osrm_pairwise_<device_id>.json` containing:
+- **metadata**: Date range, total distance, journey time, routing engine info
+- **routes**: Matched route coordinates, transport mode, confidence scores
+- **stay_points**: Detected stay locations with arrival/departure times
+- **trajectory_points**: GPS points between stay locations
 
 ### DataFrame Dumper
 
