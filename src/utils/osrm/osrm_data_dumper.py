@@ -20,8 +20,8 @@ class OSRMDataDumper:
         """Save all route prediction data to a JSON file"""
         prediction_data = {
             'metadata': {
-                'start_date': self.start_date,
-                'end_date': self.end_date,
+                'start_date': str(self.start_date),
+                'end_date': str(self.end_date),
                 'start_time': start_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'end_time': end_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'total_distance_km': round(total_distance, 3),

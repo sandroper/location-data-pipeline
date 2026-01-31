@@ -761,9 +761,7 @@ class OSRMRoutePredictorPairwise:
 
                 routes_data.append(route_info)
 
-        # if save_routes:
-        if 1==1:
-
+        if self.location_pipeline_config.save_routes_json:
             dumper = OSRMDataDumper(self.location_pipeline_config, self.start_date, self.end_date)
             dumper.save_routes_data(routes_data, stay_points_data, trajectory_points_data, total_distance,
                                                   total_journey_time, start_time, end_time)

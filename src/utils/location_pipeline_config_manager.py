@@ -32,6 +32,7 @@ class LocationPipelineConfig():
     osrm_server_foot: str = os.getenv("OSRM_SERVER", "http://127.0.0.1:5001")
 
     output_data_dir = os.getenv("OUTPUT_DATA_DIR", "./data/output")
+    save_routes_json: bool = os.getenv("SAVE_ROUTES_JSON", "false").lower() == "true"
 
     def __str__(self) -> str:
         return (
