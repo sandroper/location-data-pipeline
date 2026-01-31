@@ -7,6 +7,9 @@ each device's data is processed independently without cross-contamination.
 
 import logging
 
+from utils.osrm.osrm_data_dumper import OSRMDataDumper
+from utils.osrm.osrm_route_predictor_pairwise import OSRMRoutePredictorPairwise
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -121,8 +124,8 @@ def run_pipeline():
     pd_clustered_df = clustered_df.toPandas()
     start_date = pd_clustered_df['arrival_time'].min()
     end_date = pd_clustered_df['arrival_time'].max()
-    route_predictor = RoutePredictorOSRM(location_pipeline_config, pd_clustered_df, start_date, end_date)
-    routes_df, df_schema = route_predictor.create_enhanced_interactive_route_map()
+    route_predictor = OSRMRoutePredictorPairwise(location_pipeline_config, pd_clustered_df, start_date, end_date)
+    routes_df, df_schema = route_predictor.predict_routes(save_routes=True)
 
     clustered_df.cache()
 
@@ -147,8 +150,6 @@ def run_pipeline():
 
     # Show sample output
     clustered_df.show(20, truncate=False)
-
-    final_df.show(20, truncate=False)
 
     logger.info("=" * 60)
 

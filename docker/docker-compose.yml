@@ -69,7 +69,7 @@ services:
       - spark-master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     ports:
-      - "8082:8081"   # Spark Worker Web UI
+      - "8082:8081"
     environment:
       - SPARK_WORKER_MEMORY=2g
       - SPARK_WORKER_CORES=2
@@ -87,7 +87,7 @@ services:
     image: ghcr.io/project-osrm/osrm-backend:v6.0.0
     container_name: osrm-preprocess
     command: > 
-      sh -c "chmod +x /scripts/osrm_preprocess.sh && sh /scripts/osrm_preprocess.sh libya-260113"
+      sh -c "chmod +x /scripts/osrm_preprocess.sh && sh /scripts/osrm_preprocess.sh italy-260129"
     volumes:
       - ./osrm/data:/data
       - ./osrm/profiles:/profiles
@@ -99,7 +99,7 @@ services:
     depends_on:
       osrm-preprocess:
           condition: service_completed_successfully
-    command: osrm-routed --algorithm mld /data/work/libya-260113
+    command: osrm-routed --algorithm mld /data/work/italy-260129
     ports:
       - "5001:5000"
     volumes:

@@ -1,12 +1,9 @@
 import math
 import pandas as pd
-import os
 import logging
-from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-import json
-from utils.osrm.osrm_client import OSRMClient
+from utils.osrm.osrm_client_orig import OSRMClientOrig
 from utils.location_pipeline_config_manager import LocationPipelineConfig
 from pyspark.sql.types import StructType, StructField, IntegerType, StringType
 
@@ -28,7 +25,7 @@ class RoutePredictorOSRM:
         self.trajectory_data_df = trajectory_data_df
         self.start_date = start_date
         self.end_date = end_date
-        self.osrm = OSRMClient(config)
+        self.osrm = OSRMClientOrig(config)
 
     def load_points_data(self):
         """Load points data with both stay_point and trajectory point types"""
@@ -510,38 +507,6 @@ class RoutePredictorOSRM:
 
         return segments
 
-    def save_routes_data(self, routes_data, stay_points_data, trajectory_points_data, total_distance,
-                         total_journey_time, start_time, end_time):
-        """Save all route prediction data to a JSON file"""
-        prediction_data = {
-            'metadata': {
-                'start_date': self.start_date,
-                'end_date': self.end_date,
-                'start_time': start_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'end_time': end_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'total_distance_km': round(total_distance, 3),
-                'total_journey_time': total_journey_time,
-                'total_segments': len(routes_data),
-                'total_stay_points': len(stay_points_data),
-                'total_trajectory_points': len(trajectory_points_data),
-                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'routing_engine': 'OSRM'
-            },
-            'routes': routes_data,
-            'stay_points': stay_points_data,
-            'trajectory_points': trajectory_points_data
-        }
-
-        output_filename = f"predicted_routes_osrm_{self.start_date}_{self.end_date}_{self.device_id}.json"
-        output_path = os.path.join(self.device_data_folder, output_filename)
-
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(prediction_data, f, indent=2, ensure_ascii=False)
-
-        logger.info(f"Routes data saved to: {output_path}")
-
-        return output_path
-
     def create_enhanced_interactive_route_map(self):
         """
         Create interactive route map using OSRM for routing.
@@ -772,7 +737,6 @@ class RoutePredictorOSRM:
 
                 routes_data.append(route_info)
 
-        columns = ['route_number', 'coords']
         df_schema = StructType([StructField("route_number", IntegerType(), True) \
                                    , StructField("coords", StringType(), True)])
         return routes_data, df_schema
