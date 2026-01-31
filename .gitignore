@@ -14,6 +14,7 @@ spark-data/
 
 # Environment variables
 .env
+.env*
 .env.*
 !.env.example
 
@@ -21,6 +22,8 @@ spark-data/
 *.p8
 sf_*_key.p8
 
+# Packaging data
+*.tar.gz
 
 #OSRM Data
 docker/osrm/data/work/
