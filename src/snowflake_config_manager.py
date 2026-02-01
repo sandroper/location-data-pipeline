@@ -49,6 +49,17 @@ class SnowflakeConfig():
     # Table name - can be set via environment variable
     table_name = os.getenv("SNOWFLAKE_TABLE", "your_table")
 
+    @property
+    def query(self) -> str:
+        """Query for loading data - defaults to SELECT * FROM table_name.
+
+        Can be overridden via SNOWFLAKE_QUERY for complex queries, filters, or joins.
+        """
+        custom_query = os.getenv("SNOWFLAKE_QUERY")
+        if custom_query:
+            return custom_query
+        return f"SELECT * FROM {self.table_name}"
+
     def __str__(self) -> str:
         # Mask sensitive information in snowflake_options
         masked_options = self.snowflake_options.copy()

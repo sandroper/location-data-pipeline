@@ -136,6 +136,8 @@ SNOWFLAKE_SCHEMA=your_schema
 SNOWFLAKE_WAREHOUSE=your_warehouse
 SNOWFLAKE_ROLE=your_role
 SNOWFLAKE_TABLE=your_table
+# Custom query (optional) - overrides default SELECT * FROM table
+# SNOWFLAKE_QUERY=SELECT * FROM my_table WHERE date > '2024-01-01'
 
 # Private key authentication
 SNOWFLAKE_KEY_PATH=path/to/your/key.p8

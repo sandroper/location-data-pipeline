@@ -64,12 +64,12 @@ def run_pipeline():
     spark = create_spark_session()
 
     # Load data from Snowflake
-    data_query = f"SELECT * FROM {snowflake_config.table_name}"
+    logger.info(f"Query: {snowflake_config.query}")
 
     df = spark.read \
         .format(SNOWFLAKE_SOURCE_NAME) \
         .options(**snowflake_options) \
-        .option("query", data_query) \
+        .option("query", snowflake_config.query) \
         .load()
 
     total_records = df.count()
