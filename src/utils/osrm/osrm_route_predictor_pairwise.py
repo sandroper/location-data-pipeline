@@ -101,14 +101,16 @@ class OSRMRoutePredictorPairwise:
         color = cmap(progress)
         return mcolors.to_hex(color)
 
-    def format_time_duration(self, start_time, end_time):
+    @staticmethod
+    def format_time_duration(start_time, end_time):
         """Format duration between two times"""
         duration = end_time - start_time
         hours = int(duration.total_seconds() // 3600)
         minutes = int((duration.total_seconds() % 3600) // 60)
         return f"{hours}h {minutes}m"
 
-    def haversine_distance(self, lat1, lon1, lat2, lon2):
+    @staticmethod
+    def haversine_distance(lat1, lon1, lat2, lon2):
         """Calculate the great circle distance between two points on earth"""
         R = 6371
         lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
@@ -118,7 +120,8 @@ class OSRMRoutePredictorPairwise:
         c = 2 * math.asin(math.sqrt(a))
         return R * c
 
-    def detect_transportation_mode(self, distance_km, actual_duration_minutes, trajectory_points_count=None,
+    @staticmethod
+    def detect_transportation_mode(distance_km, actual_duration_minutes, trajectory_points_count=None,
                                    estimated_duration_minutes=None):
         """Detect the likely transportation mode based on speed analysis."""
         if distance_km <= 0 or actual_duration_minutes <= 0:
