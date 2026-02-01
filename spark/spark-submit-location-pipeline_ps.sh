@@ -104,28 +104,34 @@ fi
 
 # Configure Python environment for PySpark
 VENV_ARCHIVE="$PROJECT_ROOT/pyspark_venv.tar.gz"
-ARCHIVES_OPT=""
+LOCAL_VENV="$PROJECT_ROOT/.venv/bin/python"
 
-if [ -f "$VENV_ARCHIVE" ]; then
-    echo "Using packed virtual environment: $VENV_ARCHIVE"
-    ARCHIVES_OPT="--archives ${VENV_ARCHIVE}#venv"
-    # Executors will use the unpacked venv
-    export PYSPARK_PYTHON="./venv/bin/python"
-    # Driver uses the local venv
-    if [ -f "$PROJECT_ROOT/.venv/bin/python" ]; then
-        export PYSPARK_DRIVER_PYTHON="$PROJECT_ROOT/.venv/bin/python"
-    fi
-else
-    echo "Warning: Packed venv not found at $VENV_ARCHIVE"
-    echo "Run './scripts/pack-venv.sh' to create it"
-    echo "Falling back to system Python (may fail if dependencies are missing)"
+if [ ! -f "$VENV_ARCHIVE" ]; then
+    echo "ERROR: Packed venv not found at $VENV_ARCHIVE"
+    echo "Run './scripts/pack-venv.sh' (local) or './scripts/remote-setup.sh' (remote) to create it"
+    exit 1
 fi
 
+if [ ! -f "$LOCAL_VENV" ]; then
+    echo "ERROR: Local venv not found at $LOCAL_VENV"
+    echo "Run 'uv sync' to create the virtual environment"
+    exit 1
+fi
+
+echo "Using packed virtual environment: $VENV_ARCHIVE"
+ARCHIVES_OPT="--archives ${VENV_ARCHIVE}#venv"
+# Driver uses local venv, executors use unpacked archive
+export PYSPARK_DRIVER_PYTHON="$LOCAL_VENV"
+export PYSPARK_PYTHON="./venv/bin/python"
+
+# Spark master host - defaults to 127.0.0.1 if not set
+SPARK_MASTER_HOST="${SPARK_MASTER_HOST:-127.0.0.1}"
+
 # Submit the job to the Spark standalone cluster
-# The master URL connects to localhost:7077 (exposed by docker-compose)
+# The master URL connects to the configured host on port 7077
 # The Snowflake connector JARs will be downloaded automatically
 spark-submit \
-    --master spark://localhost:7077 \
+    --master spark://${SPARK_MASTER_HOST}:7077 \
     --deploy-mode client \
     --name "snowflake-transform" \
     --packages "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.13:3.1.6" \

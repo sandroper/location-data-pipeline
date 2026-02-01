@@ -238,7 +238,7 @@ else
     do_sync
 
     if [ "$RUN_PIPELINE" = true ]; then
-        do_run "spark-submit-location-pipeline_ps_remote.sh"
+        do_run "spark-submit-location-pipeline_ps.sh"
     elif [ "$RUN_PANDAS" = true ]; then
         do_run "spark-submit-location-pipeline.sh"
     fi

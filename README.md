@@ -127,6 +127,9 @@ cp .env.example .env
 **Edit `.env` with your settings:**
 
 ```bash
+# Spark cluster configuration
+SPARK_MASTER_HOST=127.0.0.1
+
 # Snowflake Connection Configuration
 SNOWFLAKE_ACCOUNT=your_account
 SNOWFLAKE_URL=your_url
@@ -337,18 +340,18 @@ export DEPLOY_PATH=/home/your_username/location-data-pipeline
 
 ### Running on Remote Cluster
 
-For remote Spark clusters (not local Docker), use the cluster-specific submit script:
+The same submit script works for both local and remote clusters. Configure `SPARK_MASTER_HOST` in your `.env` file to point to the remote Spark master:
 
 ```bash
-# On the remote server
-./spark/spark-submit-location-pipeline_ps_remote.sh
+# On the remote server, use .env-prod (or ENV_FILE to specify)
+./spark/spark-submit-location-pipeline_ps.sh
 ```
 
-This script:
-- Requires `pyspark_venv.tar.gz` to exist (will error if missing)
-- Uses `--deploy-mode cluster` (driver runs on a worker node)
-- Ships the packed venv via `--archives`
-- Configures `spark.pyspark.python` and `spark.pyspark.driver.python` to use the unpacked venv
+The script:
+- Requires both local venv (`.venv/`) and packed venv (`pyspark_venv.tar.gz`)
+- Uses `--deploy-mode client` (driver runs on the submitting machine)
+- Ships the packed venv to executors via `--archives`
+- Connects to the Spark master specified by `SPARK_MASTER_HOST`
 
 ### Complete Deployment Workflow
 
@@ -359,12 +362,12 @@ This script:
 ./scripts/pack-venv.sh
 
 # 3. Deploy to remote server
-./scripts/deploy.sh --env .env.prod
+./scripts/deploy.sh --env .env-prod
 
 # 4. SSH to remote and run (or use --run flag in step 3)
 ssh your_server
 cd location-data-pipeline
-./spark/spark-submit-location-pipeline_ps_remote.sh
+./spark/spark-submit-location-pipeline_ps.sh
 ```
 
 ### Iterative Development
@@ -376,7 +379,7 @@ For rapid iteration during development:
 ./scripts/deploy.sh --watch
 
 # Terminal 2: Run pipeline on remote after each sync
-ssh your_server "cd location-data-pipeline && ./spark/spark-submit-location-pipeline_ps_remote.sh"
+ssh your_server "cd location-data-pipeline && ./spark/spark-submit-location-pipeline_ps.sh"
 ```
 
 ---
@@ -570,9 +573,8 @@ location-data-pipeline/
 │   └── pack-venv.sh        # Pack virtual environment for distribution
 │
 ├── spark/
-│   ├── spark-submit-location-pipeline_ps.sh     # Pure Spark launcher (local)
-│   ├── spark-submit-location-pipeline.sh        # Pandas-based launcher (local)
-│   └── spark-submit-location-pipeline_ps_remote.sh  # Pure Spark launcher (remote cluster)
+│   ├── spark-submit-location-pipeline_ps.sh     # Pure Spark launcher (local and remote)
+│   └── spark-submit-location-pipeline.sh        # Pandas-based launcher
 │
 └── src/
     ├── spark_location_pipeline_ps.py   # Pure Spark pipeline
