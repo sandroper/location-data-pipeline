@@ -33,3 +33,5 @@ docker/data/
 
 #IntelliJ working dirs
 .idea/
+
+*.pbf

@@ -7,13 +7,12 @@ each device's data is processed independently without cross-contamination.
 
 import logging
 
-from utils.osrm.osrm_data_dumper import OSRMDataDumper
+from datetime import datetime
+from utils.logging_config import setup_logging
 from utils.osrm.osrm_route_predictor_pairwise import OSRMRoutePredictorPairwise
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Configure logging from environment variables
+setup_logging()
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +58,8 @@ def run_pipeline():
 
     # Initialize debug dumper for CSV output
     dumper = DataFrameDumper(location_pipeline_config)
+
+    start_time = datetime.now()
 
     # Create Spark session
     spark = create_spark_session()
@@ -143,6 +144,10 @@ def run_pipeline():
     num_clusters = clustered_df.filter(col('cluster_id') >= 0) \
         .select('device_id', 'cluster_id').distinct().count()
 
+    end_time = datetime.now()
+
+    pipeline_duration = end_time - start_time
+
     logger.info("=" * 60)
     logger.info("Pipeline Complete - Summary:")
     logger.info(f"  - Input records: {total_records}")
@@ -151,6 +156,7 @@ def run_pipeline():
     logger.info(f"  - Stay points: {stay_point_count}")
     logger.info(f"  - Trajectory points: {trajectory_count}")
     logger.info(f"  - Clusters found: {num_clusters}")
+    logger.info(f"  - Total pipeline duration: {pipeline_duration.total_seconds():.2f} seconds")
     logger.info("=" * 60)
 
     # Show sample output

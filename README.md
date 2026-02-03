@@ -130,6 +130,12 @@ cp .env.example .env
 # Spark cluster configuration
 SPARK_MASTER_HOST=127.0.0.1
 
+# Logging configuration
+LOG_LEVEL=INFO                    # DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_OUTPUT=console                # console, file, both
+LOG_FORMAT=standard               # standard, detailed, json
+# LOG_FILE=./logs/pipeline.log    # path when LOG_OUTPUT includes file
+
 # Snowflake Connection Configuration
 SNOWFLAKE_ACCOUNT=your_account
 SNOWFLAKE_URL=your_url
@@ -485,6 +491,30 @@ Access the Spark History Server at http://localhost:18080 to view:
 - Stage execution times
 - Task metrics and logs
 
+### Logging Configuration
+
+The pipeline logging is configurable via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOG_LEVEL` | INFO | DEBUG, INFO, WARNING, ERROR, CRITICAL |
+| `LOG_OUTPUT` | console | console, file, both |
+| `LOG_FORMAT` | standard | standard, detailed, json |
+| `LOG_FILE` | ./logs/pipeline.log | Path when LOG_OUTPUT includes file |
+
+**Format options:**
+- `standard`: `timestamp - logger - level - message`
+- `detailed`: Includes filename, line number, and function name
+- `json`: Structured JSON for log aggregation tools (ELK, Datadog, etc.)
+
+**Example for production:**
+```bash
+LOG_LEVEL=INFO
+LOG_OUTPUT=both
+LOG_FORMAT=json
+LOG_FILE=./logs/pipeline.log
+```
+
 ### Checking Logs
 
 ```bash
@@ -588,6 +618,7 @@ location-data-pipeline/
     ├── snowflake_config_manager.py     # Snowflake configuration
     └── utils/
         ├── location_pipeline_config_manager.py  # Pipeline configuration
+        ├── logging_config.py                    # Centralized logging setup
         ├── dataframe_dumper.py                  # Debug output utility
         └── osrm/
             ├── osrm_client.py           # OSRM API client
