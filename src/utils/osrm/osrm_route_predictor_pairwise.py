@@ -27,11 +27,10 @@ import math
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
+from typing import Dict, Any, Tuple, Optional
+
 from utils.location_pipeline_config_manager import LocationPipelineConfig
 from utils.osrm.osrm_client import OSRMClient
-from pyspark.sql.types import StructType, StructField, IntegerType, StringType
-
-from utils.osrm.osrm_data_dumper import OSRMDataDumper
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +46,10 @@ class OSRMRoutePredictorPairwise:
         selecting the appropriate one based on the predicted transport mode.
         """
 
-    def __init__(self, config: LocationPipelineConfig, trajectory_data_df, start_date, end_date):
+    def __init__(self, config: LocationPipelineConfig, trajectory_data_df, device_id: str, start_date, end_date):
         self.location_pipeline_config = config
         self.trajectory_data_df = trajectory_data_df
+        self.device_id = device_id
         self.start_date = start_date
         self.end_date = end_date
 
@@ -764,13 +764,8 @@ class OSRMRoutePredictorPairwise:
 
                 routes_data.append(route_info)
 
-        if self.location_pipeline_config.save_routes_json:
-            dumper = OSRMDataDumper(self.location_pipeline_config, self.start_date, self.end_date)
-            dumper.save_routes_data(routes_data, stay_points_data, trajectory_points_data, total_distance,
-                                                  total_journey_time, start_time, end_time)
-
         logger.info(f"{'=' * 60}")
-        logger.info(f"OSRM Pairwise Route Prediction Complete!")
+        logger.info(f"OSRM Pairwise Route Prediction Complete for device {self.device_id}!")
         logger.info(f"{'=' * 60}")
         logger.info(f"Stay Points: {len(stay_points_data)}")
         logger.info(f"Trajectory Points: {len(trajectory_points_data)}")
@@ -778,7 +773,18 @@ class OSRMRoutePredictorPairwise:
         logger.info(f"Total Distance: {total_distance:.3f} km")
         logger.info(f"Total Journey Time: {total_journey_time}")
 
-        df_schema = StructType([StructField("route_number", IntegerType(), True),
-                                   StructField("coords", StringType(), True)])
+        # Return all data needed for JSON export
+        device_result = {
+            'device_id': self.device_id,
+            'start_date': self.start_date,
+            'end_date': self.end_date,
+            'start_time': start_time,
+            'end_time': end_time,
+            'total_distance': total_distance,
+            'total_journey_time': total_journey_time,
+            'routes': routes_data,
+            'stay_points': stay_points_data,
+            'trajectory_points': trajectory_points_data
+        }
 
-        return routes_data, df_schema
+        return device_result

@@ -107,6 +107,7 @@ do_sync() {
         --exclude='*.p8'
         --exclude='uv.lock'
         --exclude='CLAUDE.md'
+        --exclude='tmp/'
     )
 
 
