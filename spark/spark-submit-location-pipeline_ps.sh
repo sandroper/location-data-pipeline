@@ -133,9 +133,11 @@ SPARK_MASTER_HOST="${SPARK_MASTER_HOST:-127.0.0.1}"
 spark-submit \
     --master spark://${SPARK_MASTER_HOST}:7077 \
     --deploy-mode client \
-    --name "snowflake-transform" \
-    --packages "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.13:3.1.6" \
+    --name "snowflake-location-pipeline" \
+    --packages "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.13:3.1.6,org.apache.sedona:sedona-spark-shaded-4.0_2.13:1.8.1,org.datasyslab:geotools-wrapper:1.8.1-33.1" \
     --conf "spark.sql.execution.arrow.pyspark.enabled=true" \
+    --conf "spark.serializer=org.apache.spark.serializer.KryoSerializer" \
+    --conf "spark.kryo.registrator=org.apache.sedona.core.serde.SedonaKryoRegistrator" \
     $ARCHIVES_OPT \
     "$PYTHON_FILE"
 

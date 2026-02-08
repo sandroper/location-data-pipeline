@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "apache-sedona[spark]>=1.6.1",
     "cryptography>=46.0.3",
     "geopy>=2.4.0",
     "pandas>=2.3.3",

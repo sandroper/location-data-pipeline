@@ -2,30 +2,40 @@ import logging
 from datetime import datetime
 from utils.location_pipeline_config_manager import LocationPipelineConfig
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import udf, col, lag, lead, when, lit
-from pyspark.sql.functions import sin, cos, asin, sqrt, radians
-from pyspark.sql.types import DoubleType
+from pyspark.sql.functions import col, lag, lead, when, lit, expr
 from pyspark.sql.window import Window
-from geopy.distance import geodesic
 
 logger = logging.getLogger(__name__)
 
-# @udf(returnType=DoubleType())
-# def geodesic_km(lat1, lon1, lat2, lon2):
-#     if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
-#         return None
-#     return geodesic((lat1, lon1), (lat2, lon2)).kilometers
-#
-# def haversine_spark(lat1, lon1, lat2, lon2):
-def geodesic_km(lat1, lon1, lat2, lon2):
-    """Haversine formula as Spark expression (no UDF overhead)"""
-    R = 6371.0  # Earth radius in km
-    lat1_r, lon1_r = radians(lat1), radians(lon1)
-    lat2_r, lon2_r = radians(lat2), radians(lon2)
-    dlat = lat2_r - lat1_r
-    dlon = lon2_r - lon1_r
-    a = sin(dlat / 2) ** 2 + cos(lat1_r) * cos(lat2_r) * sin(dlon / 2) ** 2
-    return 2 * R * asin(sqrt(a))
+
+def geodesic_distance_km(lat1_col: str, lon1_col: str, lat2_col: str, lon2_col: str):
+    """
+    Calculate geodesic distance between two points in kilometers using Sedona.
+
+    Uses ST_DistanceSpheroid which calculates geodesic distance on the WGS84 ellipsoid,
+    matching the accuracy of geopy.geodesic (Karney algorithm).
+
+    Args:
+        lat1_col: Column name for first point's latitude
+        lon1_col: Column name for first point's longitude
+        lat2_col: Column name for second point's latitude
+        lon2_col: Column name for second point's longitude
+
+    Returns:
+        A Column expression that can be used in withColumn().
+    """
+    # ST_DistanceSpheroid returns distance in meters, divide by 1000 for km
+    # ST_Point takes (longitude, latitude) in that order
+    return expr(f"""
+        CASE
+            WHEN {lat1_col} IS NULL OR {lon1_col} IS NULL OR {lat2_col} IS NULL OR {lon2_col} IS NULL
+            THEN NULL
+            ELSE ST_DistanceSpheroid(
+                ST_Point(CAST({lon1_col} AS DOUBLE), CAST({lat1_col} AS DOUBLE)),
+                ST_Point(CAST({lon2_col} AS DOUBLE), CAST({lat2_col} AS DOUBLE))
+            ) / 1000.0
+        END
+    """)
 
 class DataCleanser:
     def __init__(self, config: LocationPipelineConfig):
@@ -143,14 +153,14 @@ class DataCleanser:
               .withColumn('next_lon', lead('lon').over(window_spec))
               )
 
-        # Compute distances to neighbors and between neighbors
+        # Compute distances to neighbors and between neighbors using Sedona geodesic
         df = (df
               .withColumn('dist_to_prev',
-                          geodesic_km(col('lat'), col('lon'), col('prev_lat'), col('prev_lon')))
+                          geodesic_distance_km('lat', 'lon', 'prev_lat', 'prev_lon'))
               .withColumn('dist_to_next',
-                          geodesic_km(col('lat'), col('lon'), col('next_lat'), col('next_lon')))
+                          geodesic_distance_km('lat', 'lon', 'next_lat', 'next_lon'))
               .withColumn('dist_prev_next',
-                          geodesic_km(col('prev_lat'), col('prev_lon'), col('next_lat'), col('next_lon')))
+                          geodesic_distance_km('prev_lat', 'prev_lon', 'next_lat', 'next_lon'))
               )
 
         # Identify outliers: far from both neighbors, but neighbors are close to each other
@@ -180,10 +190,10 @@ class DataCleanser:
               .withColumn('prev_event_ts', lag('event_ts').over(window_spec))
               )
 
-        # Compute distance to previous point (km)
+        # Compute distance to previous point (km) using Sedona geodesic
         df = df.withColumn(
             'distance_km',
-            geodesic_km(col('prev_lat'), col('prev_lon'), col('lat'), col('lon'))
+            geodesic_distance_km('prev_lat', 'prev_lon', 'lat', 'lon')
         )
 
         # Compute time difference in hours

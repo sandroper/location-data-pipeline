@@ -3,8 +3,6 @@ Spark job to connect to Snowflake, retrieve data, run the location pipeline and 
 
 Pure Spark implementation - all operations use partitionBy('device_id') to ensure
 each device's data is processed independently without cross-contamination.
-
-Uses groupBy('device_id').applyInPandas() for distributed route prediction across devices.
 """
 
 import logging
@@ -12,7 +10,7 @@ import logging
 from datetime import datetime
 from utils.logging_config import setup_logging
 from utils.osrm.osrm_data_dumper import OSRMRoutesWriter
-from utils.osrm.osrm_route_predictor_pairwise import OSRMRoutePredictorPairwise
+from utils.osrm.device_route_processor import DeviceRouteProcessor
 
 # Configure logging from environment variables
 setup_logging()
@@ -33,12 +31,17 @@ SNOWFLAKE_SOURCE_NAME = "net.snowflake.spark.snowflake"
 
 
 def create_spark_session() -> SparkSession:
-    """Create and configure SparkSession with event logging for History Server."""
+    """Create and configure SparkSession with Sedona for geodesic calculations."""
     spark = SparkSession.builder \
         .appName("location-data-pipeline") \
         .getOrCreate()
 
-    return spark
+    # Initialize Sedona for geodesic distance calculations
+    from sedona.spark import SedonaContext
+    sedona = SedonaContext.create(spark)
+    logger.info("Sedona geospatial extensions initialized")
+
+    return sedona
 
 
 def run_pipeline():
@@ -58,7 +61,7 @@ def run_pipeline():
     snowflake_options = snowflake_config.snowflake_options
     logger.info(f"Connecting to: {snowflake_options['sfDatabase']}.{snowflake_options['sfSchema']}.{snowflake_config.table_name}")
 
-    # Initialize debug dumper for CSV output
+    # Initialize debug dumper for CSV/JSON output
     dumper = DataFrameDumper(location_pipeline_config)
 
     start_time = datetime.now()
@@ -90,10 +93,10 @@ def run_pipeline():
 
     # Repartition by device_id for data locality
     # This ensures all data for a device is on the same partition
-    num_devices = df.select('device_id').distinct().count()
-    num_partitions = max(num_devices, 10)  # At least 10 partitions for parallelism
+    num_devices_initial = df.select('device_id').distinct().count()
+    num_partitions = max(num_devices_initial, 10)  # At least 10 partitions for parallelism
 
-    logger.info(f"Found {num_devices} unique devices, repartitioning to {num_partitions} partitions")
+    logger.info(f"Found {num_devices_initial} unique devices, repartitioning to {num_partitions} partitions")
     df = df.repartition(num_partitions, col('device_id'))
 
     # ========== STEP 1: Data cleansing ==========
@@ -131,37 +134,17 @@ def run_pipeline():
     logger.info("STEP 4/5: Creating trajectories and routes (per device)")
 
     # Convert to pandas and process each device
-    # Note: For large datasets, consider using applyInPandas with proper module packaging
     pd_clustered_df = clustered_df.toPandas()
+    num_devices_for_routes = pd_clustered_df['device_id'].nunique()
 
-    # Get unique device IDs and process each
-    device_ids = pd_clustered_df['device_id'].unique()
-    logger.info(f"Processing routes for {len(device_ids)} device(s)")
+    # Log if devices were lost during processing steps
+    if num_devices_for_routes < num_devices_initial:
+        logger.warning(f"Device count reduced: {num_devices_initial} -> {num_devices_for_routes} "
+                       f"({num_devices_initial - num_devices_for_routes} devices lost during cleansing/qualification/clustering)")
 
-    all_device_results = {}
-    for device_id in device_ids:
-        device_df = pd_clustered_df[pd_clustered_df['device_id'] == device_id]
-
-        start_date = device_df['arrival_time'].min()
-        end_date = device_df['arrival_time'].max()
-
-        try:
-            predictor = OSRMRoutePredictorPairwise(
-                config=location_pipeline_config,
-                trajectory_data_df=device_df,
-                device_id=str(device_id),
-                start_date=start_date,
-                end_date=end_date
-            )
-
-            device_result = predictor.predict_routes()
-            if device_result:
-                all_device_results[str(device_id)] = device_result
-
-        except Exception as e:
-            logger.error(f"Error processing device {device_id}: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
+    # Process routes for all devices
+    route_processor = DeviceRouteProcessor(location_pipeline_config)
+    all_device_results, route_stats = route_processor.process_all_devices(pd_clustered_df)
 
     # Save JSON output if enabled
     if location_pipeline_config.save_routes_json and all_device_results:
@@ -180,31 +163,21 @@ def run_pipeline():
     num_clusters = clustered_df.filter(col('cluster_id') >= 0) \
         .select('device_id', 'cluster_id').distinct().count()
 
-    # Calculate route statistics from results
-    total_routes = 0
-    total_route_distance = 0
-    devices_with_routes = 0
-    for device_id, result in all_device_results.items():
-        if result.get('routes'):
-            devices_with_routes += 1
-            total_routes += len(result['routes'])
-            total_route_distance += result.get('total_distance', 0)
-
     end_time = datetime.now()
-
     pipeline_duration = end_time - start_time
 
     logger.info("=" * 60)
     logger.info("Pipeline Complete - Summary:")
     logger.info(f"  - Input records: {total_records}")
-    logger.info(f"  - Devices processed: {num_devices}")
-    logger.info(f"  - Devices with routes: {devices_with_routes}")
+    logger.info(f"  - Devices in source data: {num_devices_initial}")
+    logger.info(f"  - Devices after processing: {num_devices_for_routes}")
+    logger.info(f"  - Devices with routes: {route_stats.devices_with_routes}")
     logger.info(f"  - Output records: {final_count}")
     logger.info(f"  - Stay points: {stay_point_count}")
     logger.info(f"  - Trajectory points: {trajectory_count}")
     logger.info(f"  - Clusters found: {num_clusters}")
-    logger.info(f"  - Total route segments: {total_routes}")
-    logger.info(f"  - Total route distance: {total_route_distance:.2f} km")
+    logger.info(f"  - Total route segments: {route_stats.total_routes}")
+    logger.info(f"  - Total route distance: {route_stats.total_distance_km:.2f} km")
     logger.info(f"  - Total pipeline duration: {pipeline_duration.total_seconds():.2f} seconds")
     logger.info("=" * 60)
 
