@@ -125,3 +125,7 @@ Environment variables in `.env` (copy from `.env.example`):
 - `CLUSTERING_EPS` (100) - Grid cell size for clustering in meters
 - `OSRM_SERVER` - Routing server URL
 - `PIPELINE_OUTPUT_DIR` - Debug CSV output location
+
+## Commit Preferences
+
+- Do not add "Co-Authored-By" lines to commit messages

@@ -1,29 +1,46 @@
-from pyspark.sql import DataFrame
+import numpy as np
+import pandas as pd
+from sklearn.cluster import DBSCAN
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
     col, lit, when, row_number, monotonically_increasing_id,
-    avg, sum as spark_sum, count, broadcast, floor, concat_ws,
-    dense_rank, first
+    avg, sum as spark_sum, count, broadcast
 )
 from pyspark.sql.window import Window
-from pyspark.sql.types import LongType, DoubleType
+from pyspark.sql.types import StructType, StructField, StringType, LongType, DoubleType, IntegerType
 from utils.location_pipeline_config_manager import LocationPipelineConfig
+from typing import Dict, List, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 class ClusterStayPoints:
+    """
+    Cluster stay points using DBSCAN with haversine distance.
+
+    This implementation matches the legacy sklearn DBSCAN behavior exactly by:
+    1. Collecting stay points per device to the driver
+    2. Running sklearn DBSCAN with haversine metric on each device's data
+    3. Joining cluster labels back to the Spark DataFrame
+
+    This approach works because:
+    - Stay points are a small subset of all points
+    - Per-device data is typically small (tens to hundreds of stay points)
+    - DBSCAN runs on the driver, avoiding executor Python dependency issues
+    """
+
     def __init__(self, config: LocationPipelineConfig) -> None:
         self.centroid_method: str = str(config.centroid_method)
         self.clustering_eps: int = int(config.clustering_eps)
         self.clustering_min_samples: int = int(config.clustering_min_samples)
 
-    def cluster_stay_points(self, device_data: DataFrame) -> tuple[DataFrame, DataFrame]:
+    def cluster_stay_points(self, device_data: DataFrame) -> Tuple[DataFrame, DataFrame]:
         """
-        Cluster stay points using grid-based spatial clustering.
+        Cluster stay points using DBSCAN with haversine distance.
 
-        Pure Spark implementation that clusters each device's stay points
-        independently using partitionBy('device_id').
+        Matches legacy sklearn DBSCAN behavior exactly by processing each
+        device's stay points on the driver.
 
         Args:
             device_data: Spark DataFrame with columns including device_id, lat, lon, point_type
@@ -56,8 +73,8 @@ class ClusterStayPoints:
             labels_df = stay_points_df.select('point_id', lit(-1).alias('cluster_id'))
             return df_complete, labels_df
 
-        # Perform grid-based clustering (pure Spark, partitioned by device_id)
-        clustered_stay_points = self._cluster_with_grid(stay_points_df)
+        # Perform DBSCAN clustering on the driver (matches legacy exactly)
+        clustered_stay_points = self._cluster_with_dbscan(stay_points_df)
 
         # Calculate centroids for each cluster
         clustered_with_centroids = self._calculate_centroids(clustered_stay_points)
@@ -79,133 +96,99 @@ class ClusterStayPoints:
 
         return result_df, labels_df
 
-    def _cluster_with_grid(self, stay_points_df: DataFrame) -> DataFrame:
+    def _cluster_with_dbscan(self, stay_points_df: DataFrame) -> DataFrame:
         """
-        Cluster stay points using grid-based spatial clustering.
+        Cluster stay points using sklearn DBSCAN with haversine distance.
 
-        This is a pure Spark implementation that:
-        1. Assigns each point to a grid cell based on lat/lon
-        2. Groups points in the same cell as a cluster
-        3. Filters clusters with fewer than min_samples as noise
-        4. All operations are partitioned by device_id
+        This method:
+        1. Collects stay points to the driver (grouped by device)
+        2. Runs sklearn DBSCAN for each device
+        3. Creates a cluster mapping DataFrame
+        4. Joins cluster labels back to the original DataFrame
 
-        The grid cell size is determined by clustering_eps (in meters).
+        Uses haversine metric matching the legacy implementation exactly.
         """
         eps_meters = self.clustering_eps
         min_samples = self.clustering_min_samples
+
+        # Convert eps from meters to radians for haversine
+        eps_rad = eps_meters / 6371000.0  # Earth radius in meters
 
         # Drop existing cluster_id column if present
         if 'cluster_id' in stay_points_df.columns:
             stay_points_df = stay_points_df.drop('cluster_id')
 
-        # Calculate grid cell size in degrees
-        # At equator: 1 degree latitude ≈ 111,000 meters
-        # 1 degree longitude ≈ 111,000 * cos(lat) meters
-        # Using a simplified approximation for grid cell size
-        meters_per_degree = 111000.0
-        cell_size_deg = eps_meters / meters_per_degree
+        # Get the SparkSession
+        spark = stay_points_df.sparkSession
 
-        # Assign each point to a grid cell
-        stay_points_df = stay_points_df.withColumn(
-            'grid_lat',
-            floor(col('lat') / cell_size_deg)
-        ).withColumn(
-            'grid_lon',
-            floor(col('lon') / cell_size_deg)
-        ).withColumn(
-            'grid_cell',
-            concat_ws('_', col('grid_lat').cast('string'), col('grid_lon').cast('string'))
-        )
+        # Collect stay points to driver, grouped by device
+        # Select only the columns we need for clustering
+        columns_to_keep = stay_points_df.columns
+        clustering_cols = ['device_id', 'point_id', 'lat', 'lon']
 
-        # Create cluster IDs per device based on grid cells
-        # Points in the same grid cell (for the same device) get the same cluster
-        if 'device_id' in stay_points_df.columns:
-            # Create unique cluster ID per device and grid cell
-            cluster_window = Window.partitionBy('device_id').orderBy('grid_cell')
-            stay_points_df = stay_points_df.withColumn(
-                'cluster_id',
-                dense_rank().over(cluster_window) - 1
-            )
+        # Collect to pandas for processing
+        logger.info("Collecting stay points to driver for DBSCAN clustering...")
+        stay_points_pd = stay_points_df.select(clustering_cols).toPandas()
 
-            # Count points per cluster (per device)
-            cluster_count_window = Window.partitionBy('device_id', 'cluster_id')
-        else:
-            cluster_window = Window.orderBy('grid_cell')
-            stay_points_df = stay_points_df.withColumn(
-                'cluster_id',
-                dense_rank().over(cluster_window) - 1
-            )
-            cluster_count_window = Window.partitionBy('cluster_id')
+        if len(stay_points_pd) == 0:
+            logger.warning("No stay points to cluster")
+            return stay_points_df.withColumn('cluster_id', lit(-1).cast(LongType()))
 
-        # Add cluster size
-        stay_points_df = stay_points_df.withColumn(
-            'cluster_size',
-            count('*').over(cluster_count_window)
-        )
+        # Run DBSCAN for each device
+        cluster_results = []
+        devices = stay_points_pd['device_id'].unique()
 
-        # Mark clusters with fewer than min_samples as noise (-1)
-        stay_points_df = stay_points_df.withColumn(
-            'cluster_id',
-            when(col('cluster_size') < min_samples, lit(-1))
-            .otherwise(col('cluster_id'))
-        )
+        total_clusters = 0
+        total_noise = 0
 
-        # Renumber valid clusters to be consecutive (0, 1, 2, ...)
-        # Get distinct valid clusters per device and assign new IDs
-        if 'device_id' in stay_points_df.columns:
-            valid_clusters = stay_points_df.filter(col('cluster_id') >= 0) \
-                .select('device_id', 'cluster_id').distinct()
+        for device_id in devices:
+            device_points = stay_points_pd[stay_points_pd['device_id'] == device_id].copy()
 
-            renumber_window = Window.partitionBy('device_id').orderBy('cluster_id')
-            cluster_mapping = valid_clusters.withColumn(
-                'new_cluster_id',
-                row_number().over(renumber_window) - 1
-            )
+            if len(device_points) == 0:
+                continue
 
-            stay_points_df = stay_points_df.join(
-                broadcast(cluster_mapping),
-                ['device_id', 'cluster_id'],
+            # Extract coordinates and convert to radians
+            coords = device_points[['lat', 'lon']].to_numpy()
+            coords_rad = np.radians(coords)
+
+            # Run DBSCAN with haversine metric (matches legacy exactly)
+            db = DBSCAN(eps=eps_rad, min_samples=min_samples, metric='haversine')
+            labels = db.fit_predict(coords_rad)
+
+            # Count clusters and noise for this device
+            unique_labels = set(labels)
+            n_clusters = len([l for l in unique_labels if l >= 0])
+            n_noise = list(labels).count(-1)
+            total_clusters += n_clusters
+            total_noise += n_noise
+
+            # Store results
+            for point_id, cluster_id in zip(device_points['point_id'], labels):
+                cluster_results.append({
+                    'point_id': int(point_id),
+                    'cluster_id': int(cluster_id)
+                })
+
+        logger.info(f"DBSCAN clustering found {total_clusters} clusters, {total_noise} noise points across {len(devices)} devices")
+
+        # Create a Spark DataFrame with cluster assignments
+        if cluster_results:
+            cluster_schema = StructType([
+                StructField('point_id', LongType(), False),
+                StructField('cluster_id', LongType(), False)
+            ])
+            cluster_mapping_df = spark.createDataFrame(cluster_results, schema=cluster_schema)
+
+            # Join cluster labels back to the original DataFrame
+            result_df = stay_points_df.join(
+                broadcast(cluster_mapping_df),
+                'point_id',
                 'left'
-            ).withColumn(
-                'cluster_id',
-                when(col('cluster_id') == -1, lit(-1))
-                .otherwise(col('new_cluster_id'))
-            ).drop('new_cluster_id')
-        else:
-            valid_clusters = stay_points_df.filter(col('cluster_id') >= 0) \
-                .select('cluster_id').distinct()
-
-            renumber_window = Window.orderBy('cluster_id')
-            cluster_mapping = valid_clusters.withColumn(
-                'new_cluster_id',
-                row_number().over(renumber_window) - 1
             )
-
-            stay_points_df = stay_points_df.join(
-                broadcast(cluster_mapping),
-                'cluster_id',
-                'left'
-            ).withColumn(
-                'cluster_id',
-                when(col('cluster_id') == -1, lit(-1))
-                .otherwise(col('new_cluster_id'))
-            ).drop('new_cluster_id')
-
-        # Clean up temporary columns
-        stay_points_df = stay_points_df.drop('grid_lat', 'grid_lon', 'grid_cell', 'cluster_size')
-
-        # Log clustering results
-        if 'device_id' in stay_points_df.columns:
-            num_clusters = stay_points_df.filter(col('cluster_id') >= 0) \
-                .select('device_id', 'cluster_id').distinct().count()
         else:
-            num_clusters = stay_points_df.filter(col('cluster_id') >= 0) \
-                .select('cluster_id').distinct().count()
+            result_df = stay_points_df.withColumn('cluster_id', lit(-1).cast(LongType()))
 
-        noise_count = stay_points_df.filter(col('cluster_id') == -1).count()
-        logger.info(f"Grid clustering found {num_clusters} clusters, {noise_count} noise points")
-
-        return stay_points_df
+        return result_df
 
     def _calculate_centroids(self, clustered_df: DataFrame) -> DataFrame:
         """
@@ -338,6 +321,3 @@ class ClusterStayPoints:
             )
 
         return clustered_df
-        
-        
-        

@@ -103,14 +103,7 @@ if [ ! -f "$KEY_FILE_PATH" ]; then
 fi
 
 # Configure Python environment for PySpark
-VENV_ARCHIVE="$PROJECT_ROOT/pyspark_venv.tar.gz"
 LOCAL_VENV="$PROJECT_ROOT/.venv/bin/python"
-
-if [ ! -f "$VENV_ARCHIVE" ]; then
-    echo "ERROR: Packed venv not found at $VENV_ARCHIVE"
-    echo "Run './scripts/pack-venv.sh' (local) or './scripts/remote-setup.sh' (remote) to create it"
-    exit 1
-fi
 
 if [ ! -f "$LOCAL_VENV" ]; then
     echo "ERROR: Local venv not found at $LOCAL_VENV"
@@ -118,11 +111,10 @@ if [ ! -f "$LOCAL_VENV" ]; then
     exit 1
 fi
 
-echo "Using packed virtual environment: $VENV_ARCHIVE"
-ARCHIVES_OPT="--archives ${VENV_ARCHIVE}#venv"
-# Driver uses local venv, executors use unpacked archive
+# Driver uses local venv, executors use system Python (dependencies installed in Docker image)
 export PYSPARK_DRIVER_PYTHON="$LOCAL_VENV"
-export PYSPARK_PYTHON="./venv/bin/python"
+export PYSPARK_PYTHON="python3"
+ARCHIVES_OPT=""
 
 # Spark master host - defaults to 127.0.0.1 if not set
 SPARK_MASTER_HOST="${SPARK_MASTER_HOST:-127.0.0.1}"
