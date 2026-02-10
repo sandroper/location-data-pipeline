@@ -1,4 +1,5 @@
 tmp/
+jars/
 
 # Python-generated files
 __pycache__/
@@ -31,9 +32,11 @@ sf_*_key.p8
 docker/osrm/data/work/
 
 # Pipeline output data
-docker/data/
+docker/data/*
 
 #IntelliJ working dirs
 .idea/
 
 *.pbf
+
+src/legacy/

@@ -9,7 +9,7 @@ import logging
 
 from datetime import datetime
 from utils.logging_config import setup_logging
-from utils.osrm.osrm_data_dumper import OSRMRoutesWriter
+from utils.osrm.osrm_json_data_dumper import OSRMRoutesWriter
 from utils.osrm.device_route_processor import DeviceRouteProcessor
 
 # Configure logging from environment variables
@@ -185,8 +185,6 @@ def run_pipeline():
     clustered_df.show(20, truncate=False)
 
     logger.info("=" * 60)
-
-    dumper.dump(clustered_df, "clustered")
 
 
 if __name__ == "__main__":

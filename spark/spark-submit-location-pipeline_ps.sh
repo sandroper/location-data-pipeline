@@ -104,29 +104,55 @@ fi
 
 # Configure Python environment for PySpark
 LOCAL_VENV="$PROJECT_ROOT/.venv/bin/python"
+VENV_ARCHIVE="$PROJECT_ROOT/pyspark_venv.tar.gz"
 
 if [ ! -f "$LOCAL_VENV" ]; then
     echo "ERROR: Local venv not found at $LOCAL_VENV"
-    echo "Run 'uv sync' to create the virtual environment"
+    echo "Run 'uv sync' (local) or './scripts/remote-setup.sh' (remote) to create it"
     exit 1
 fi
 
-# Driver uses local venv, executors use system Python (dependencies installed in Docker image)
 export PYSPARK_DRIVER_PYTHON="$LOCAL_VENV"
-export PYSPARK_PYTHON="python3"
-ARCHIVES_OPT=""
+
+# Use packed venv if available (remote deployment), otherwise system Python (local Docker)
+if [ -f "$VENV_ARCHIVE" ]; then
+    echo "Using packed virtual environment: $VENV_ARCHIVE"
+    ARCHIVES_OPT="--archives ${VENV_ARCHIVE}#venv"
+    export PYSPARK_PYTHON="./venv/bin/python"
+else
+    echo "No packed venv found, using system Python on executors"
+    ARCHIVES_OPT=""
+    # Prefer python3.14 if available (for remote clusters), fall back to python3 (for Docker)
+    if command -v python3.14 &> /dev/null; then
+        export PYSPARK_PYTHON="python3.14"
+    else
+        export PYSPARK_PYTHON="python3"
+    fi
+fi
 
 # Spark master host - defaults to 127.0.0.1 if not set
 SPARK_MASTER_HOST="${SPARK_MASTER_HOST:-127.0.0.1}"
 
+# Check if local JARs exist (more reliable for remote clusters)
+JARS_DIR="$PROJECT_ROOT/jars"
+if [ -d "$JARS_DIR" ] && [ "$(ls -A $JARS_DIR/*.jar 2>/dev/null)" ]; then
+    echo "Using local JARs from: $JARS_DIR"
+    JAR_FILES=$(ls -1 "$JARS_DIR"/*.jar | tr '\n' ',' | sed 's/,$//')
+    JARS_OPT="--jars $JAR_FILES"
+    PACKAGES_OPT=""
+else
+    echo "No local JARs found, using --packages (requires internet)"
+    JARS_OPT=""
+    PACKAGES_OPT='--packages "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.13:3.1.6,org.apache.sedona:sedona-spark-shaded-4.0_2.13:1.8.1,org.datasyslab:geotools-wrapper:1.8.1-33.1"'
+fi
+
 # Submit the job to the Spark standalone cluster
-# The master URL connects to the configured host on port 7077
-# The Snowflake connector JARs will be downloaded automatically
 spark-submit \
     --master spark://${SPARK_MASTER_HOST}:7077 \
     --deploy-mode client \
     --name "snowflake-location-pipeline" \
-    --packages "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.13:3.1.6,org.apache.sedona:sedona-spark-shaded-4.0_2.13:1.8.1,org.datasyslab:geotools-wrapper:1.8.1-33.1" \
+    $JARS_OPT \
+    $PACKAGES_OPT \
     --conf "spark.sql.execution.arrow.pyspark.enabled=true" \
     --conf "spark.serializer=org.apache.spark.serializer.KryoSerializer" \
     --conf "spark.kryo.registrator=org.apache.sedona.core.serde.SedonaKryoRegistrator" \

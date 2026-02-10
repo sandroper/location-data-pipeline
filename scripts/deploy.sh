@@ -63,6 +63,7 @@ show_usage() {
     echo "Options:"
     echo "  --run            Run the pipeline after syncing"
     echo "  --run-pandas     Run the Pandas-based pipeline after syncing"
+    echo "  --setup          Run remote-setup.sh to create/update venv (use when dependencies change)"
     echo "  --env <file>     Sync specified env file to remote as .env (default: .env)"
     echo "  --watch          Watch for changes and auto-sync (requires fswatch)"
     echo "  --dry-run        Show what would be transferred without actually syncing"
@@ -108,6 +109,7 @@ do_sync() {
         --exclude='uv.lock'
         --exclude='CLAUDE.md'
         --exclude='tmp/'
+        --exclude='pyspark_venv.tar.gz'
     )
 
 
@@ -175,6 +177,7 @@ do_watch() {
 # ============================================================
 RUN_PIPELINE=false
 RUN_PANDAS=false
+RUN_SETUP=false
 ENV_FILE=""
 WATCH_MODE=false
 DRY_RUN=false
@@ -187,6 +190,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --run-pandas)
             RUN_PANDAS=true
+            shift
+            ;;
+        --setup)
+            RUN_SETUP=true
             shift
             ;;
         --env)
@@ -237,6 +244,12 @@ if [ "$WATCH_MODE" = true ]; then
     do_watch
 else
     do_sync
+
+    if [ "$RUN_SETUP" = true ]; then
+        log_info "Running remote-setup.sh to create/update virtual environment..."
+        ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" \
+            "cd ${REMOTE_PATH} && ./scripts/remote-setup.sh"
+    fi
 
     if [ "$RUN_PIPELINE" = true ]; then
         do_run "spark-submit-location-pipeline_ps.sh"
