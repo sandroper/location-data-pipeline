@@ -114,15 +114,21 @@ fi
 
 export PYSPARK_DRIVER_PYTHON="$LOCAL_VENV"
 
-# Use packed venv if available (remote deployment), otherwise system Python (local Docker)
-if [ -f "$VENV_ARCHIVE" ]; then
-    echo "Using packed virtual environment: $VENV_ARCHIVE"
+# Determine if we're connecting to local Docker or remote cluster
+# For local Docker (127.0.0.1), use system Python installed in Docker image
+# For remote clusters, use packed venv if available
+if [ "$SPARK_MASTER_HOST" = "127.0.0.1" ] || [ "$SPARK_MASTER_HOST" = "localhost" ]; then
+    echo "Local Docker mode: using system Python on executors"
+    ARCHIVES_OPT=""
+    export PYSPARK_PYTHON="python3"
+elif [ -f "$VENV_ARCHIVE" ]; then
+    echo "Remote mode: using packed virtual environment: $VENV_ARCHIVE"
     ARCHIVES_OPT="--archives ${VENV_ARCHIVE}#venv"
     export PYSPARK_PYTHON="./venv/bin/python"
 else
-    echo "No packed venv found, using system Python on executors"
+    echo "Remote mode: no packed venv found, using system Python on executors"
     ARCHIVES_OPT=""
-    # Prefer python3.14 if available (for remote clusters), fall back to python3 (for Docker)
+    # Prefer python3.14 if available (for remote clusters)
     if command -v python3.14 &> /dev/null; then
         export PYSPARK_PYTHON="python3.14"
     else
@@ -143,8 +149,12 @@ if [ -d "$JARS_DIR" ] && [ "$(ls -A $JARS_DIR/*.jar 2>/dev/null)" ]; then
 else
     echo "No local JARs found, using --packages (requires internet)"
     JARS_OPT=""
-    PACKAGES_OPT='--packages "net.snowflake:snowflake-jdbc:3.14.0,net.snowflake:spark-snowflake_2.13:3.1.6,org.apache.sedona:sedona-spark-shaded-4.0_2.13:1.8.1,org.datasyslab:geotools-wrapper:1.8.1-33.1"'
+    PACKAGES_OPT='--packages "net.snowflake:snowflake-jdbc:3.24.2,net.snowflake:spark-snowflake_2.13:3.1.6,org.apache.sedona:sedona-spark-shaded-4.0_2.13:1.8.1,org.datasyslab:geotools-wrapper:1.8.1-33.1"'
 fi
+
+# JVM options for Java 21+ compatibility (required by Snowflake JDBC driver)
+# These are harmless on Java 17 and earlier
+JAVA_MODULE_OPTIONS="--add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.misc=ALL-UNNAMED"
 
 # Submit the job to the Spark standalone cluster
 spark-submit \
@@ -156,6 +166,8 @@ spark-submit \
     --conf "spark.sql.execution.arrow.pyspark.enabled=true" \
     --conf "spark.serializer=org.apache.spark.serializer.KryoSerializer" \
     --conf "spark.kryo.registrator=org.apache.sedona.core.serde.SedonaKryoRegistrator" \
+    --conf "spark.driver.extraJavaOptions=$JAVA_MODULE_OPTIONS" \
+    --conf "spark.executor.extraJavaOptions=$JAVA_MODULE_OPTIONS" \
     $ARCHIVES_OPT \
     "$PYTHON_FILE"
 

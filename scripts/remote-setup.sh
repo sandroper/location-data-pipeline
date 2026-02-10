@@ -50,7 +50,8 @@ pip install \
     'requests>=2.32.5' \
     'numpy>=1.26.0' \
     'matplotlib>=3.8.0' \
-    'venv-pack>=0.2.0'
+    'venv-pack>=0.2.0' \
+    'folium>=0.20.0'
 
 # Pack the virtual environment
 echo "Packing virtual environment..."
