@@ -5,7 +5,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List
 
+import pandas as pd
+
 from utils.location_pipeline_config_manager import LocationPipelineConfig
+from utils.osrm.osrm_map_data_dumper import OSRMMapDataDumper
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +45,13 @@ class OSRMRoutesWriter:
         Returns:
             Path to the saved JSON file
         """
+        start_date = device_data.get('start_date', '')
+        end_date = device_data.get('end_date', '')
         prediction_data = {
             'metadata': {
                 'device_id': device_id,
-                'start_date': str(device_data.get('start_date', '')),
-                'end_date': str(device_data.get('end_date', '')),
+                'start_date': str(start_date),
+                'end_date': str(end_date),
                 'start_time': self._format_time(device_data.get('start_time')),
                 'end_time': self._format_time(device_data.get('end_time')),
                 'total_distance_km': round(device_data.get('total_distance', 0), 3),
@@ -70,6 +75,19 @@ class OSRMRoutesWriter:
             json.dump(prediction_data, f, indent=2, ensure_ascii=False)
 
         logger.info(f"Routes data for device {device_id} saved to: {output_path}")
+
+        # Create interactive HTML map visualization
+        try:
+            points_df = self._reconstruct_points_dataframe(device_data)
+            if points_df is not None and len(points_df) >= 2:
+                map_dumper = OSRMMapDataDumper(
+                    device_id, points_df, start_date, end_date, config=self.config
+                )
+                map_dumper.create_enhanced_interactive_route_map()
+            else:
+                logger.warning(f"Insufficient points to create map for device {device_id}")
+        except Exception as e:
+            logger.error(f"Failed to create map for device {device_id}: {e}")
         return output_path
 
     def save_all_devices(self, all_device_results: Dict[str, Dict[str, Any]]) -> List[str]:
@@ -98,4 +116,61 @@ class OSRMRoutesWriter:
         if hasattr(time_val, 'strftime'):
             return time_val.strftime('%Y-%m-%d %H:%M:%S')
         return str(time_val)
+
+    @staticmethod
+    def _reconstruct_points_dataframe(device_data: Dict[str, Any]) -> pd.DataFrame:
+        """
+        Reconstruct a DataFrame from processed device data.
+
+        Combines stay_points and trajectory_points into a single DataFrame
+        that can be used by OSRMMapDataDumper for visualization.
+
+        Args:
+            device_data: Dictionary containing stay_points and trajectory_points
+
+        Returns:
+            DataFrame with columns: lat, lon, point_type, arrival_time, departure_time, cluster_id, etc.
+        """
+        all_points = []
+
+        # Add stay points
+        for sp in device_data.get('stay_points', []):
+            point = {
+                'lat': sp['lat'],
+                'lon': sp['lon'],
+                'point_type': 'stay_point',
+                'arrival_time': pd.to_datetime(sp['arrival_time']),
+                'cluster_id': sp.get('cluster_id'),
+                'centroid_lat': sp.get('centroid_lat', sp['lat']),
+                'centroid_lon': sp.get('centroid_lon', sp['lon']),
+            }
+            # Handle departure_time
+            if sp.get('departure_time') and sp['departure_time'] != 'Unknown':
+                point['departure_time'] = pd.to_datetime(sp['departure_time'])
+            else:
+                point['departure_time'] = None
+            all_points.append(point)
+
+        # Add trajectory points
+        for tp in device_data.get('trajectory_points', []):
+            point = {
+                'lat': tp['lat'],
+                'lon': tp['lon'],
+                'point_type': 'trajectory',
+                'arrival_time': pd.to_datetime(tp['timestamp']),
+                'departure_time': None,
+                'cluster_id': None,
+                'centroid_lat': None,
+                'centroid_lon': None,
+            }
+            all_points.append(point)
+
+        if not all_points:
+            return None
+
+        # Create DataFrame and sort by time
+        points_df = pd.DataFrame(all_points)
+        points_df = points_df.sort_values('arrival_time').reset_index(drop=True)
+
+        return points_df
 
