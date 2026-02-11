@@ -1,6 +1,6 @@
 # Location Data Pipeline
 
-A PySpark-based pipeline for processing location data from Snowflake, built on **Apache Spark 4.1**. The pipeline cleanses raw location data, identifies stay points vs trajectory points, clusters stay points, and generates route predictions using OSRM.
+A PySpark-based pipeline for processing location data from Snowflake, built on **Apache Spark 4.0.1**. The pipeline cleanses raw location data, identifies stay points vs trajectory points, clusters stay points using grid-based spatial clustering, and generates route predictions using OSRM with geodesic distance calculations powered by **Apache Sedona**.
 
 ## Table of Contents
 
@@ -38,7 +38,7 @@ brew install uv
 
 ### 2. Docker
 
-Docker is required to run the Spark cluster.
+Docker is required to run the local Spark cluster.
 
 **Check if Docker is installed and running:**
 ```bash
@@ -51,37 +51,37 @@ docker info
 - Linux: [Docker Engine](https://docs.docker.com/engine/install/)
 - Windows: [Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/)
 
-### 3. Java 21
+### 3. Java 17
 
-Java 21 is required by Apache Spark 4.1.
+Java 17 is recommended for compatibility with Snowflake JDBC driver and Apache Spark 4.0.1.
 
 **Check Java version:**
 ```bash
 java -version
 ```
 
-Ensure you have Java 21 installed. The Docker containers use Java 21 (`java21-ubuntu` base image).
+> **Note:** The Docker containers use Java 17 (`java17-ubuntu` base image) for Snowflake JDBC Arrow compatibility. Java 21 has known issues with the Snowflake JDBC driver's Arrow implementation.
 
-### 4. Apache Spark 4.1 (Local Installation)
+### 4. Apache Spark 4.0.1 (Local Installation)
 
-This project requires **Apache Spark 4.1.x**. Spark must be installed locally to use `spark-submit` from your host machine.
+This project requires **Apache Spark 4.0.x**. Spark must be installed locally to use `spark-submit` from your host machine.
 
 **Check if Spark is installed and verify version:**
 ```bash
 spark-submit --version
-# Should show version 4.1.x
+# Should show version 4.0.x
 ```
 
-**Install Spark 4.1:**
+**Install Spark 4.0.1:**
 ```bash
 # macOS via Homebrew
 brew install apache-spark
 
-# Or download Spark 4.1.0 from https://spark.apache.org/downloads.html
+# Or download Spark 4.0.1 from https://spark.apache.org/downloads.html
 # and add to PATH
 ```
 
-> **Note:** The Docker containers use `apache/spark:4.1.0-scala2.13-java21-ubuntu`. Ensure your local Spark installation is compatible (4.1.x recommended).
+> **Note:** The Docker containers use `apache/spark:4.0.1-scala2.13-java17-ubuntu`. Ensure your local Spark installation is compatible (4.0.x recommended).
 
 ---
 
@@ -104,7 +104,21 @@ uv sync
 source .venv/bin/activate
 ```
 
-### 3. Verify Installation
+### 3. Download Required JARs
+
+The pipeline requires JARs for Snowflake connectivity and Apache Sedona geospatial operations:
+
+```bash
+./scripts/download-jars.sh
+```
+
+This downloads:
+- `snowflake-jdbc-3.24.2.jar` - Snowflake JDBC driver
+- `spark-snowflake_2.13-3.1.6.jar` - Spark Snowflake connector
+- `sedona-spark-shaded-4.0_2.13-1.8.1.jar` - Apache Sedona geospatial library
+- `geotools-wrapper-1.8.1-33.1.jar` - GeoTools for coordinate transformations
+
+### 4. Verify Installation
 
 ```bash
 # Check that PySpark is available
@@ -195,7 +209,7 @@ Place your Snowflake private key file (`.p8`) in one of these locations:
 
 ## Starting the Spark Cluster
 
-The Spark cluster runs in Docker containers managed by Docker Compose, using the official **Apache Spark 4.1.0** image with Scala 2.13 and Java 21.
+The Spark cluster runs in Docker containers managed by Docker Compose, using the official **Apache Spark 4.0.1** image with Scala 2.13 and Java 17.
 
 ### 1. Navigate to Docker Directory
 
@@ -208,6 +222,11 @@ cd docker
 ```bash
 docker compose build
 ```
+
+This builds a custom image based on `apache/spark:4.0.1-scala2.13-java17-ubuntu` with:
+- Python 3.14 with required dependencies
+- Apache Sedona and GeoTools for geospatial operations
+- JVM options for Snowflake JDBC compatibility
 
 ### 3. Start the Cluster
 
@@ -255,8 +274,8 @@ There are two versions of the pipeline:
 ### Option 1: Pure Spark Pipeline (Recommended for Large Datasets)
 
 ```bash
-# From project root
-./spark/spark-submit-location-pipeline_ps.sh
+# From project root (for local Docker cluster)
+SPARK_MASTER_HOST=127.0.0.1 ./spark/spark-submit-location-pipeline_ps.sh
 ```
 
 This pipeline uses pure PySpark operations throughout, making it suitable for large-scale distributed processing. All operations are partitioned by `device_id` to ensure data isolation between devices.
@@ -265,7 +284,7 @@ This pipeline uses pure PySpark operations throughout, making it suitable for la
 
 ```bash
 # From project root
-./spark/spark-submit-location-pipeline.sh
+SPARK_MASTER_HOST=127.0.0.1 ./spark/spark-submit-location-pipeline.sh
 ```
 
 This pipeline uses Pandas DataFrames for some transformations, which may be more familiar but collects data to the driver. Suitable for smaller datasets.
@@ -286,95 +305,126 @@ ENV_FILE=.env.dev ./spark/spark-submit-location-pipeline.sh
 
 ## Remote Deployment
 
-This section covers deploying and running the pipeline on a remote Spark cluster without manual dependency installation on remote servers.
+This section covers deploying and running the pipeline on a remote standalone Spark cluster.
 
-### Packaging Dependencies with venv-pack
+### Prerequisites for Remote Cluster
 
-The project uses [venv-pack](https://jcrist.github.io/venv-pack/) to create a portable archive of the Python virtual environment. This archive is shipped to Spark executors via the `--archives` option, eliminating the need to install dependencies on remote servers.
+- Remote server with Spark 4.0.x installed
+- Java 17 on remote workers (recommended for Snowflake JDBC compatibility)
+- Python 3.14 available as `python3.14` or `python3`
+- SSH access to the remote server
+- Internet access on remote server (for initial setup)
 
-#### 1. Install Development Dependencies
-
-```bash
-uv sync --group dev
-```
-
-#### 2. Pack the Virtual Environment
-
-```bash
-./scripts/pack-venv.sh
-```
-
-This creates `pyspark_venv.tar.gz` in the project root, containing all Python dependencies (~200-400MB depending on packages).
-
-#### 3. When to Re-pack
-
-Re-run `./scripts/pack-venv.sh` after:
-- Adding or updating dependencies in `pyproject.toml`
-- Running `uv sync` to update packages
-
-### Deploy Script
-
-The `scripts/deploy.sh` script syncs code and the packed virtual environment to a remote server via rsync.
-
-#### Setup
+### Step 1: Configure Deployment Settings
 
 ```bash
 # Configure remote server (one-time, or add to shell profile)
 export DEPLOY_USER=your_username
 export DEPLOY_HOST=your_server.com
 export DEPLOY_PATH=/home/your_username/location-data-pipeline
+# Optional: specify SSH key
+export DEPLOY_SSH_KEY=/path/to/ssh/key
 ```
 
-#### Usage
+### Step 2: Deploy Source Code
 
 ```bash
-# Sync source files and packed venv to remote
+# Sync source files to remote (excludes local venv and packed venv)
 ./scripts/deploy.sh
 
 # Sync with a specific env file (deployed as .env on remote)
 ./scripts/deploy.sh --env .env.prod
-
-# Sync and run the pipeline
-./scripts/deploy.sh --env .env.prod --run
-
-# Watch mode - auto-sync on file changes (requires fswatch)
-./scripts/deploy.sh --watch
-
-# Dry run - see what would be transferred
-./scripts/deploy.sh --dry-run
 ```
 
-### Running on Remote Cluster
+### Step 3: Setup Remote Environment (First Time Only)
 
-The same submit script works for both local and remote clusters. Configure `SPARK_MASTER_HOST` in your `.env` file to point to the remote Spark master:
+The virtual environment must be created **on the remote server** to ensure Linux-compatible binaries:
 
 ```bash
-# On the remote server, use .env-prod (or ENV_FILE to specify)
+# Run remote-setup.sh on the remote server
+./scripts/deploy.sh --setup
+```
+
+This runs `scripts/remote-setup.sh` on the remote server which:
+- Creates a Python virtual environment using `python3.14`
+- Installs all required dependencies (PySpark, Sedona, etc.)
+- Packs the venv into `pyspark_venv.tar.gz` for distribution to workers
+
+> **Important:** Do NOT sync `pyspark_venv.tar.gz` from your local macOS machine - it contains macOS binaries that won't work on Linux workers. The packed venv must be created on the Linux remote server.
+
+### Step 4: Download JARs on Remote
+
+SSH to the remote server and download required JARs:
+
+```bash
+ssh your_server
+cd location-data-pipeline
+./scripts/download-jars.sh
+```
+
+Alternatively, you can sync your local `jars/` directory to the remote server.
+
+### Step 5: Run the Pipeline
+
+```bash
+# On the remote server
 ./spark/spark-submit-location-pipeline_ps.sh
 ```
 
-The script:
-- Requires both local venv (`.venv/`) and packed venv (`pyspark_venv.tar.gz`)
-- Uses `--deploy-mode client` (driver runs on the submitting machine)
-- Ships the packed venv to executors via `--archives`
-- Connects to the Spark master specified by `SPARK_MASTER_HOST`
+Or deploy and run in one command:
+
+```bash
+./scripts/deploy.sh --env .env.prod --run
+```
+
+### Deploy Script Options
+
+| Option | Description |
+|--------|-------------|
+| `--run` | Run the Pure Spark pipeline after syncing |
+| `--run-pandas` | Run the Pandas-based pipeline after syncing |
+| `--setup` | Run `remote-setup.sh` to create/update the virtual environment |
+| `--env <file>` | Sync specified env file to remote as `.env` |
+| `--watch` | Watch for changes and auto-sync (requires `fswatch`) |
+| `--dry-run` | Show what would be transferred without actually syncing |
 
 ### Complete Deployment Workflow
 
 ```bash
-# 1. Make code changes locally
+# 1. Configure deployment (first time)
+export DEPLOY_USER=your_username
+export DEPLOY_HOST=your_server.com
 
-# 2. Pack venv (only needed after dependency changes)
-./scripts/pack-venv.sh
+# 2. Deploy code and setup remote environment (first time)
+./scripts/deploy.sh --env .env.prod --setup
 
-# 3. Deploy to remote server
-./scripts/deploy.sh --env .env-prod
+# 3. Download JARs on remote (first time)
+ssh your_server "cd location-data-pipeline && ./scripts/download-jars.sh"
 
-# 4. SSH to remote and run (or use --run flag in step 3)
-ssh your_server
-cd location-data-pipeline
-./spark/spark-submit-location-pipeline_ps.sh
+# 4. Run the pipeline
+./scripts/deploy.sh --run
 ```
+
+### Updating Dependencies
+
+When you add or update dependencies in `pyproject.toml`:
+
+```bash
+# Re-run setup on remote to update the packed venv
+./scripts/deploy.sh --setup
+```
+
+### Local Docker vs Remote Cluster
+
+The spark-submit script automatically detects the environment:
+
+| Environment | Detection | Python on Executors | venv Archive |
+|-------------|-----------|---------------------|--------------|
+| Local Docker | `SPARK_MASTER_HOST=127.0.0.1` | System Python in Docker image | Not used |
+| Remote Cluster | Any other host | Packed venv via `--archives` | Required |
+
+For local Docker, the script uses the Python installation in the Docker image.
+For remote clusters, it ships the packed virtual environment to executors.
 
 ### Iterative Development
 
@@ -409,25 +459,27 @@ ssh your_server "cd location-data-pipeline && ./spark/spark-submit-location-pipe
          ▼
 ┌─────────────────┐
 │ 2. Stay Point   │  Identifies locations where device
-│    Detection    │  remained stationary
+│    Detection    │  remained stationary (uses Sedona for
+│                 │  geodesic distance calculations)
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
 │ 3. Clustering   │  Groups nearby stay points into
-│                 │  location clusters
+│                 │  location clusters using grid-based
+│                 │  spatial clustering
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
 │ 4. Route        │  Generates routes between clusters
-│    Prediction   │  using OSRM
+│    Prediction   │  using OSRM, predicts transport mode
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
 │   Output        │
-│   (Snowflake)   │
+│   (JSON/Map)    │
 └─────────────────┘
 ```
 
@@ -439,6 +491,14 @@ ssh your_server "cd location-data-pipeline && ./spark/spark-submit-location-pipe
 | `PointsQualifier` | `points_qualifier_ps.py` | `points_qualifier.py` |
 | `ClusterStayPoints` | `cluster_stay_points_ps.py` | `cluster_stay_points.py` |
 | `RoutePredictorOSRM` | `osrm_route_predictor.py` | `osrm_route_predictor.py` |
+
+### Geospatial Operations
+
+The pipeline uses **Apache Sedona** for accurate geodesic distance calculations:
+
+- `ST_DistanceSphere()` - Calculates geodesic distance between coordinates
+- Used in stay point detection and clustering
+- Operates directly on Spark DataFrames for distributed processing
 
 ### Data Partitioning
 
@@ -553,6 +613,7 @@ curl http://localhost:8080  # Should return HTML
 - Verify your `.env` file has correct credentials
 - Ensure the private key file exists and is readable
 - Check that your IP is whitelisted in Snowflake
+- Verify you're using Snowflake JDBC 3.24.2 (check with `ls jars/`)
 
 #### 4. OSRM routing errors
 
@@ -580,6 +641,35 @@ Error: The following required environment variables are not set:
 
 Ensure your `.env` file is properly configured.
 
+#### 7. `sun.misc.Unsafe` or Arrow errors (Java 21)
+
+This occurs when using Java 21 with the Snowflake JDBC driver. Solutions:
+- **Recommended:** Use Java 17 (the Docker image uses Java 17 by default)
+- **Alternative:** Ensure JVM options are set in `spark-defaults.conf`:
+  ```
+  spark.executor.extraJavaOptions --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.misc=ALL-UNNAMED
+  ```
+
+#### 8. Remote cluster: `ModuleNotFoundError: No module named 'sedona'`
+
+The packed virtual environment is missing or outdated:
+```bash
+# Re-run setup on remote to create/update the packed venv
+./scripts/deploy.sh --setup
+```
+
+#### 9. Remote cluster: Python path not found
+
+Ensure `python3.14` or `python3` is available on remote workers. The script auto-detects the Python version.
+
+#### 10. `Cannot run program "./venv/bin/python"` on Docker
+
+This happens when the macOS packed venv is accidentally used on Docker. For local Docker:
+```bash
+# Use explicit host specification
+SPARK_MASTER_HOST=127.0.0.1 ./spark/spark-submit-location-pipeline_ps.sh
+```
+
 ---
 
 ## Project Structure
@@ -590,21 +680,27 @@ location-data-pipeline/
 ├── .env.example            # Example configuration template
 ├── pyproject.toml          # UV/Python project configuration
 ├── uv.lock                 # UV lock file
-├── pyspark_venv.tar.gz     # Packed virtual environment (generated)
+├── pyspark_venv.tar.gz     # Packed virtual environment (generated on remote)
 ├── README.md               # This file
 │
 ├── docker/
-│   ├── docker-compose.yml  # Spark 4.1 cluster configuration
-│   ├── Dockerfile          # Spark 4.1 worker image (based on apache/spark:4.1.0)
+│   ├── docker-compose.yml  # Spark 4.0.1 cluster configuration
+│   ├── Dockerfile          # Custom Spark image (Java 17, Python 3.14, Sedona)
+│   ├── spark/
+│   │   └── spark-defaults.conf  # Spark configuration with JVM options
 │   └── osrm/               # OSRM routing server data
+│
+├── jars/                   # Downloaded JARs (Snowflake, Sedona, GeoTools)
 │
 ├── scripts/
 │   ├── deploy.sh           # Remote deployment via rsync
+│   ├── download-jars.sh    # Download required JARs from Maven Central
+│   ├── remote-setup.sh     # Setup virtual environment on remote server
 │   └── pack-venv.sh        # Pack virtual environment for distribution
 │
 ├── spark/
-│   ├── spark-submit-location-pipeline_ps.sh     # Pure Spark launcher (local and remote)
-│   └── spark-submit-location-pipeline.sh        # Pandas-based launcher
+│   ├── spark-submit-location-pipeline_ps.sh  # Pure Spark launcher
+│   └── spark-submit-location-pipeline.sh     # Pandas-based launcher
 │
 └── src/
     ├── spark_location_pipeline_ps.py   # Pure Spark pipeline
